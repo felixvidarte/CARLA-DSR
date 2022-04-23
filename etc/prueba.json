@@ -1,0 +1,207 @@
+{
+    "DSRModel": {
+        "symbols": {
+            "1": {
+                "attribute": {
+                    "OuterRegionBottom": {
+                        "type": 1,
+                        "value": -1900
+                    },
+                    "OuterRegionLeft": {
+                        "type": 1,
+                        "value": -1900
+                    },
+                    "OuterRegionRight": {
+                        "type": 1,
+                        "value": 1900
+                    },
+                    "OuterRegionTop": {
+                        "type": 1,
+                        "value": 1900
+                    },
+                    "color": {
+                        "type": 0,
+                        "value": "SeaGreen"
+                    },
+                    "level": {
+                        "type": 1,
+                        "value": 0
+                    },
+                    "parent": {
+                        "type": 7,
+                        "value": "0"
+                    },
+                    "pos_x": {
+                        "type": 2,
+                        "value": 167
+                    },
+                    "pos_y": {
+                        "type": 2,
+                        "value": 146
+                    }
+                },
+                "id": "1",
+                "links": [
+                    {
+                        "dst": "69252021055651860",
+                        "label": "RT",
+                        "linkAttribute": {
+                            "rt_rotation_euler_xyz": {
+                                "type": 3,
+                                "value": [
+                                    0,
+                                    0,
+                                    0
+                                ]
+                            },
+                            "rt_translation": {
+                                "type": 3,
+                                "value": [
+                                    0,
+                                    0,
+                                    0
+                                ]
+                            }
+                        },
+                        "src": "1"
+                    },
+                    {
+                        "dst": "69252038789169172",
+                        "label": "RT",
+                        "linkAttribute": {
+                            "rt_rotation_euler_xyz": {
+                                "type": 3,
+                                "value": [
+                                    0,
+                                    0,
+                                    0
+                                ]
+                            },
+                            "rt_translation": {
+                                "type": 3,
+                                "value": [
+                                    0,
+                                    0,
+                                    0
+                                ]
+                            }
+                        },
+                        "src": "1"
+                    },
+                    {
+                        "dst": "69252053569896468",
+                        "label": "RT",
+                        "linkAttribute": {
+                            "rt_rotation_euler_xyz": {
+                                "type": 3,
+                                "value": [
+                                    0,
+                                    0,
+                                    0
+                                ]
+                            },
+                            "rt_translation": {
+                                "type": 3,
+                                "value": [
+                                    0,
+                                    0,
+                                    0
+                                ]
+                            }
+                        },
+                        "src": "1"
+                    }
+                ],
+                "name": "world",
+                "type": "world"
+            },
+            "69252021055651860": {
+                "attribute": {
+                    "color": {
+                        "type": 0,
+                        "value": "GoldenRod"
+                    },
+                    "level": {
+                        "type": 1,
+                        "value": 1
+                    },
+                    "parent": {
+                        "type": 7,
+                        "value": "1"
+                    },
+                    "pos_x": {
+                        "type": 2,
+                        "value": -239.326477
+                    },
+                    "pos_y": {
+                        "type": 2,
+                        "value": -376.75531
+                    }
+                },
+                "id": "69252021055651860",
+                "links": [
+                ],
+                "name": "Car",
+                "type": "vehicle"
+            },
+            "69252038789169172": {
+                "attribute": {
+                    "color": {
+                        "type": 0,
+                        "value": "GoldenRod"
+                    },
+                    "level": {
+                        "type": 1,
+                        "value": 1
+                    },
+                    "parent": {
+                        "type": 7,
+                        "value": "1"
+                    },
+                    "pos_x": {
+                        "type": 2,
+                        "value": 119.771835
+                    },
+                    "pos_y": {
+                        "type": 2,
+                        "value": -385.148651
+                    }
+                },
+                "id": "69252038789169172",
+                "links": [
+                ],
+                "name": "Car_2",
+                "type": "affordance_space"
+            },
+            "69252053569896468": {
+                "attribute": {
+                    "color": {
+                        "type": 0,
+                        "value": "GoldenRod"
+                    },
+                    "level": {
+                        "type": 1,
+                        "value": 1
+                    },
+                    "parent": {
+                        "type": 7,
+                        "value": "1"
+                    },
+                    "pos_x": {
+                        "type": 2,
+                        "value": 314.694611
+                    },
+                    "pos_y": {
+                        "type": 2,
+                        "value": -408.633301
+                    }
+                },
+                "id": "69252053569896468",
+                "links": [
+                ],
+                "name": "Car_3",
+                "type": "affordance_space"
+            }
+        }
+    }
+}
