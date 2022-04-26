@@ -23,6 +23,8 @@ import traceback
 
 import numpy as np
 import carla
+import random
+import time
 from PySide2.QtCore import QTimer, Signal, QPoint, QPointF
 from PySide2.QtGui import QPolygon, Qt
 from PySide2.QtWidgets import QApplication
@@ -44,11 +46,14 @@ console = Console(highlight=False)
 # import librobocomp_innermodel
 
 class VehicleType:
-    def __init__(self, id=None, tx=0, ty=0, ry=0):
+    def __init__(self, id=None, tx=0, ty=0, tz = 0, rx = 0, ry=0, rz = 0):
         self.id = id
         self.tx = tx
         self.ty = ty
+        self.tz = tz
         self.ry = ry
+        self.rx = rx
+        self.rz = rz
 
 
 class ObjectType:
@@ -76,6 +81,12 @@ class SpecificWorker(GenericWorker):
         self.agent_id = 121
         self.g = DSRGraph(0, "CARLA_DSR", self.agent_id)
         self.rt_api = rt_api(self.g)
+        self.client = None
+        self._blueprint_library = None
+        self._vehicle = None
+        self.create_client() #Inicializamos conexión con Carla
+        self.initialize_world('Town01') #Cargamos Mapa (En este caso Town01, hay que cambiar por el nuestro)
+
 
         try:
             signals.connect(self.g, signals.UPDATE_NODE_ATTR, self.update_node_att)
@@ -107,11 +118,68 @@ class SpecificWorker(GenericWorker):
 
         # PEOPLE
         vehicle_list = self.get_vehicles_from_dsr()
+        for vehicle in vehicle_list:
+            self.load_vehicle(vehicle)
 
         return True
 
+
     def startup_check(self):
         QTimer.singleShot(200, QApplication.instance().quit)
+
+    def create_client(self, host=None, port=None):
+        if port is None:
+            self.port = "2000"
+        else:
+            self.port = port
+        if host is None:
+            self.host = "localhost"
+        else:
+            self.host = host
+        if self.client is None:
+            try:
+                self.client = carla.Client(self.host, self.port)
+                return True
+            except RuntimeError:
+                console.log(f"Could not create Carla client on '{self.host}' and {self.port}", style="red")
+        else:
+            console.log(f"Carla client for {self.port} and {self.host} already exists")
+        return False
+
+    def initialize_world(self, map_name):
+        if self.client:
+            self.print_versions()
+            self.client.set_timeout(10.0)
+            init_time = time.time()
+            print('Loading world...')
+            self.world = self.client.load_world(map_name)
+            print('Done')
+            print(f'Loading world took {time.time() - init_time:2.2f} seconds')
+            self._blueprint_library = self.world.get_blueprint_library()
+        else:
+            console.log("No carla client created. Call create_client first.", style="red")
+
+    def load_vehicle(self, vehicle):
+        choices = self.world.get_blueprint_library().filter('vehicle.*')
+        vehicle_blueprint = random.choice(choices)
+        if self._vehicle is not None:
+            spawn_point = self.vehicle.get_transform()
+            spawn_point.location.z += 2.0
+            spawn_point.rotation.roll = 0.0
+            spawn_point.rotation.pitch = 0.0
+            self.destroy()
+            self._vehicle = self.world.try_spawn_actor(vehicle_blueprint, spawn_point)
+
+        while self._vehicle is None:
+            try:
+                spawn_point = carla.Transform(carla.Location(x=vehicle.tx, y=vehicle.ty, z=vehicle.tz + 2), carla.Rotation(0, 0, vehicle.rz)) #Comprobar angulos CARLA-ROBOCOMP
+                self._vehicle = self.world.spawn_actor(vehicle_blueprint, spawn_point)
+            except:
+                spawn_points = self.world.get_map().get_spawn_points()
+                spawn_point = random.choice(spawn_points) if spawn_points else carla.Transform()
+                self._vehicle = self.world.try_spawn_actor(vehicle_blueprint, spawn_point)
+
+
 
     def get_vehicles_from_dsr(self):
         # Read and store people from dsr
@@ -122,7 +190,7 @@ class SpecificWorker(GenericWorker):
             edge_rt = self.rt_api.get_edge_RT(self.g.get_node("world"), vehicle_node.id)
             tx, ty, tz = edge_rt.attrs['rt_translation'].value
             rx, ry, rz = edge_rt.attrs['rt_rotation_euler_xyz'].value
-            vehicle_type = VehicleType(vehicle_id, tx, ty, ry)
+            vehicle_type = VehicleType(vehicle_id, tx, ty, tz, rx, ry, rz) #Comprobar cual hay que almacenar y cual no
             vehicles_list.append(vehicle_type)
 
         return vehicles_list
