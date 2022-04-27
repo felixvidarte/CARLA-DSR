@@ -135,10 +135,8 @@ class SpecificWorker(GenericWorker):
         # cv2.waitKey(1)
         # cv2.imshow("LeftCam", self.car_rgb_cams["LeftCam"])
         # cv2.waitKey(1)
-        v_f = cv2.hconcat([self.car_rgb_cams["LeftCam"], self.car_rgb_cams["CenterCam"]])
-        v_f = cv2.hconcat([v_f, self.car_rgb_cams["RightCam"]])
-        cv2.imshow("FrontCam", v_f)
-        cv2.waitKey(1)
+        imagecompuesta = self.mosaic()
+
         #ego_cam.listen(lambda image: image.save_to_disk('/home/salabeta/TFGFelix/CARLA-DSR/agents/CARLA_DSR/%.6d.png' % image.frame))
         # PEOPLE
         # vehicle_list = self.get_vehicles_from_dsr()
@@ -244,7 +242,7 @@ class SpecificWorker(GenericWorker):
                 cam_transform = carla.Transform(center_cam_location, center_cam_rotation)
                 self.center_cam = self.world.spawn_actor(cam_bp, cam_transform, attach_to=self.ego_vehicle,
                                             attachment_type=carla.AttachmentType.Rigid)
-                self.center_cam.listen(lambda image: self.sensor_callback(image, "CenterCam"))
+                self.center_cam.listen(lambda image: self.sensor_rgb_callback(image, "CenterCam"))
             elif i == 1:
                 left_cam_location = carla.Location(dimensiones_Car.x, 0, dimensiones_Car.z)
                 left_cam_rotation = carla.Rotation(13, -60, 0)
@@ -252,7 +250,7 @@ class SpecificWorker(GenericWorker):
                 left_cam_transform = carla.Transform(left_cam_location, left_cam_rotation)
                 self.left_cam = self.world.spawn_actor(cam_bp, left_cam_transform, attach_to=self.ego_vehicle,
                                                        attachment_type=carla.AttachmentType.Rigid)
-                self.left_cam.listen(lambda image: self.sensor_callback(image, "LeftCam"))
+                self.left_cam.listen(lambda image: self.sensor_rgb_callback(image, "LeftCam"))
             elif i == 2:
                 right_cam_location = carla.Location(dimensiones_Car.x, 0, dimensiones_Car.z)
                 right_cam_rotation = carla.Rotation(13, 60, 0)
@@ -260,7 +258,7 @@ class SpecificWorker(GenericWorker):
                 right_cam_transform = carla.Transform(right_cam_location, right_cam_rotation)
                 self.right_cam = self.world.spawn_actor(cam_bp, right_cam_transform, attach_to=self.ego_vehicle,
                                                        attachment_type=carla.AttachmentType.Rigid)
-                self.right_cam.listen(lambda image: self.sensor_rgbcallback(image, "RightCam"))
+                self.right_cam.listen(lambda image: self.sensor_rgb_callback(image, "RightCam"))
 
 
     #Compute np array for rgb sensors
@@ -273,6 +271,12 @@ class SpecificWorker(GenericWorker):
         self.car_rgb_cams[sensorID] = array
         mutex.release()
 
+    def mosaic(self):
+        v_f = cv2.hconcat([self.car_rgb_cams["LeftCam"], self.car_rgb_cams["CenterCam"]])
+        v_f = cv2.hconcat([v_f, self.car_rgb_cams["RightCam"]])
+        cv2.imshow("FrontCam", v_f)
+        cv2.waitKey(1)
+        return v_f
 
 
     #Dudas de que hace
