@@ -21,6 +21,7 @@
 import itertools
 import traceback
 #import pygame
+import math
 import numpy as np
 import carla
 import random
@@ -88,18 +89,18 @@ class SpecificWorker(GenericWorker):
         self.rt_api = rt_api(self.g)
         self.INPUT_WIDTH = 424
         self.INPUT_HEIGHT = 240
-        self.car_cams = {}
+        self.car_rgb_cams = {}
         self._server_clock = pygame.time.Clock()
         self.client = None
         self._blueprint_library = None
         self._vehicle = None
         self.ego_vehicle = None
         self.create_client() #Inicializamos conexión con Carla
-        self.client.set_timeout(1.0)
+        self.client.set_timeout(2.0)
         self.initialize_world('Town01') #Cargamos Mapa (En este caso Town01, hay que cambiar por el nuestro)
         self.world.wait_for_tick()
         self.load_ego_vehicle()
-        self.set_ego_rgb_frontal_cams(1)
+        self.set_ego_rgb_frontal_cams(3)
         try:
             signals.connect(self.g, signals.UPDATE_NODE_ATTR, self.update_node_att)
             signals.connect(self.g, signals.UPDATE_NODE, self.update_node)
@@ -130,7 +131,13 @@ class SpecificWorker(GenericWorker):
 
     @QtCore.Slot()
     def compute(self):
-        cv2.imshow("Prueba", self.car_cams["CenterCam"])
+        # cv2.imshow("CenterCam", self.car_rgb_cams["CenterCam"])
+        # cv2.waitKey(1)
+        # cv2.imshow("LeftCam", self.car_rgb_cams["LeftCam"])
+        # cv2.waitKey(1)
+        v_f = cv2.hconcat([self.car_rgb_cams["LeftCam"], self.car_rgb_cams["CenterCam"]])
+        v_f = cv2.hconcat([v_f, self.car_rgb_cams["RightCam"]])
+        cv2.imshow("FrontCam", v_f)
         cv2.waitKey(1)
         #ego_cam.listen(lambda image: image.save_to_disk('/home/salabeta/TFGFelix/CARLA-DSR/agents/CARLA_DSR/%.6d.png' % image.frame))
         # PEOPLE
@@ -221,32 +228,54 @@ class SpecificWorker(GenericWorker):
 
         return vehicles_list
 
+    #Place three frontal rgb cams
     def set_ego_rgb_frontal_cams(self, num_cams):
         cam_bp = self._blueprint_library.find('sensor.camera.rgb')
-        cam_bp.set_attribute("image_size_x", str(self.INPUT_WIDTH))
-        cam_bp.set_attribute("image_size_y", str(self.INPUT_HEIGHT))
+        cam_bp.set_attribute("image_size_x", str(self.INPUT_HEIGHT))
+        cam_bp.set_attribute("image_size_y", str(self.INPUT_WIDTH))
         cam_bp.set_attribute("fov", str(105))
         dimensiones_Car = self.ego_vehicle.bounding_box.extent
-        print('CAR_DIMENSIONS', dimensiones_Car)
+        #In carla location is (pitch, yaw, roll) where pitch is y, yaw is z and roll is x
+
         for i in range(num_cams):
-            if len(self.car_cams) == 0:
-                center_cam_location =carla.Location(dimensiones_Car.x, 0, dimensiones_Car.z)
-                center_cam_rotation= carla.Rotation(0, 180, 0)
+            if i == 0:
+                center_cam_location = carla.Location(dimensiones_Car.x, 0, dimensiones_Car.z)
+                center_cam_rotation = carla.Rotation(13, 0, 0)
                 cam_transform = carla.Transform(center_cam_location, center_cam_rotation)
                 self.center_cam = self.world.spawn_actor(cam_bp, cam_transform, attach_to=self.ego_vehicle,
-                                            attachment_type=carla.AttachmentType.SpringArm)
-                sensorID="CenterCam"
-                self.center_cam.listen(lambda image: self.sensor_callback(image, sensorID))
+                                            attachment_type=carla.AttachmentType.Rigid)
+                self.center_cam.listen(lambda image: self.sensor_callback(image, "CenterCam"))
+            elif i == 1:
+                left_cam_location = carla.Location(dimensiones_Car.x, 0, dimensiones_Car.z)
+                left_cam_rotation = carla.Rotation(13, -60, 0)
+                #left_cam_rotation = carla.Rotation(0, 180+math.degrees(-0.244346), math.degrees(-np.pi/3))
+                left_cam_transform = carla.Transform(left_cam_location, left_cam_rotation)
+                self.left_cam = self.world.spawn_actor(cam_bp, left_cam_transform, attach_to=self.ego_vehicle,
+                                                       attachment_type=carla.AttachmentType.Rigid)
+                self.left_cam.listen(lambda image: self.sensor_callback(image, "LeftCam"))
+            elif i == 2:
+                right_cam_location = carla.Location(dimensiones_Car.x, 0, dimensiones_Car.z)
+                right_cam_rotation = carla.Rotation(13, 60, 0)
+                #left_cam_rotation = carla.Rotation(0, 180+math.degrees(-0.244346), math.degrees(-np.pi/3))
+                right_cam_transform = carla.Transform(right_cam_location, right_cam_rotation)
+                self.right_cam = self.world.spawn_actor(cam_bp, right_cam_transform, attach_to=self.ego_vehicle,
+                                                       attachment_type=carla.AttachmentType.Rigid)
+                self.right_cam.listen(lambda image: self.sensor_rgbcallback(image, "RightCam"))
 
-    def sensor_callback(self, img, sensorID):
+
+    #Compute np array for rgb sensors
+    def sensor_rgb_callback(self, img, sensorID):
         global mutex
         mutex.acquire()
         array = np.frombuffer(img.raw_data, dtype=np.dtype("uint8"))
-        array = np.reshape(array, (self.INPUT_HEIGHT, self.INPUT_WIDTH, 4))
+        array = np.reshape(array, (self.INPUT_WIDTH, self.INPUT_HEIGHT, 4))
         array = array[:, :, :3]
-        self.car_cams[sensorID] = array
+        self.car_rgb_cams[sensorID] = array
         mutex.release()
 
+
+
+    #Dudas de que hace
     def on_world_tick(self, timestamp):
         self._server_clock.tick()
         self.server_fps = self._server_clock.get_fps()
