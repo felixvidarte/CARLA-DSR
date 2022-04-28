@@ -20,7 +20,7 @@
 #
 import itertools
 import traceback
-#import pygame
+import pygame
 import math
 import numpy as np
 import carla
@@ -36,7 +36,6 @@ from genericworker import *
 from threading import Lock
 
 from PersonalSpacesManager import PersonalSpacesManager
-
 # If RoboComp was compiled with Python bindings you can use InnerModel in Python
 # sys.path.append('/opt/robocomp/lib')
 from pydsr import *
@@ -46,9 +45,11 @@ from rich.console import Console
 console = Console(highlight=False)
 
 mutex = Lock()
+print("HOLA")
 # import librobocomp_qmat
 # import librobocomp_osgviewer
 # import librobocomp_innermodel
+
 
 class VehicleType:
     def __init__(self, id=None, tx=0, ty=0, tz = 0, rx = 0, ry=0, rz = 0):
@@ -61,56 +62,44 @@ class VehicleType:
         self.rz = rz
 
 
-class ObjectType:
-    def __init__(self, id=None, node_id=None, tx=0, ty=0, ry=0,
-                 shape=None, inter_angle=0, inter_space=0, depth=0, width=0, height=0):
-        self.id = id
-        self.node_id = node_id
-        self.tx = tx
-        self.ty = ty
-        self.ry = ry
-        self.shape = shape
-        self.inter_angle = inter_angle
-        self.inter_space = inter_space
-        self.depth = depth
-        self.width = width
-        self.height = height
-
-
 class SpecificWorker(GenericWorker):
 
     def __init__(self, proxy_map, startup_check=False):
+        print("HOLA")
         super(SpecificWorker, self).__init__(proxy_map)
-        self.Period = 500
+        self.Period = 50
         # pygame.init()
         # pygame.font.init()
         self.agent_id = 121
         self.g = DSRGraph(0, "CARLA_DSR", self.agent_id)
+        print("HOLA")
         self.rt_api = rt_api(self.g)
         self.INPUT_WIDTH = 424
         self.INPUT_HEIGHT = 240
         self.car_rgb_cams = {}
         self._server_clock = pygame.time.Clock()
         self.client = None
+        self.world = None
         self._blueprint_library = None
         self._vehicle = None
         self.ego_vehicle = None
         self.create_client() #Inicializamos conexión con Carla
         self.client.set_timeout(2.0)
-        self.initialize_world('Town01') #Cargamos Mapa (En este caso Town01, hay que cambiar por el nuestro)
+        self.initialize_world('Town02') #Cargamos Mapa (En este caso Town01, hay que cambiar por el nuestro)
         self.world.wait_for_tick()
         self.load_ego_vehicle()
         self.set_ego_rgb_frontal_cams(3)
-        try:
-            signals.connect(self.g, signals.UPDATE_NODE_ATTR, self.update_node_att)
-            signals.connect(self.g, signals.UPDATE_NODE, self.update_node)
-            signals.connect(self.g, signals.DELETE_NODE, self.delete_node)
-            signals.connect(self.g, signals.UPDATE_EDGE, self.update_edge)
-            signals.connect(self.g, signals.UPDATE_EDGE_ATTR, self.update_edge_att)
-            signals.connect(self.g, signals.DELETE_EDGE, self.delete_edge)
-            print("signals connected")
-        except RuntimeError as e:
-            print(e)
+
+        # try:
+        #     signals.connect(self.g, signals.UPDATE_NODE_ATTR, self.update_node_att)
+        #     signals.connect(self.g, signals.UPDATE_NODE, self.update_node)
+        #     signals.connect(self.g, signals.DELETE_NODE, self.delete_node)
+        #     signals.connect(self.g, signals.UPDATE_EDGE, self.update_edge)
+        #     signals.connect(self.g, signals.UPDATE_EDGE_ATTR, self.update_edge_att)
+        #     signals.connect(self.g, signals.DELETE_EDGE, self.delete_edge)
+        #     print("signals connected")
+        # except RuntimeError as e:
+        #     print(e)
 
         self.personal_spaces_manager = PersonalSpacesManager()
 
@@ -122,8 +111,10 @@ class SpecificWorker(GenericWorker):
 
     def __del__(self):
         if self.world is not None:
+            for actor in self.world.get_actors():
+                actor.destroy()
             self.world.destroy()
-        self.center_cam.destroy()
+
         print('SpecificWorker destructor')
 
     def setParams(self, params):
@@ -131,11 +122,17 @@ class SpecificWorker(GenericWorker):
 
     @QtCore.Slot()
     def compute(self):
+        self.mosaic()
+        # if self.i == 0:
+        #     self.world.on_tick(self.on_world_tick)
+        #     self.i = 1
         # cv2.imshow("CenterCam", self.car_rgb_cams["CenterCam"])
         # cv2.waitKey(1)
         # cv2.imshow("LeftCam", self.car_rgb_cams["LeftCam"])
         # cv2.waitKey(1)
-        imagecompuesta = self.mosaic()
+        print("HOLA")
+
+        # imagecompuesta = self.mosaic()
 
         #ego_cam.listen(lambda image: image.save_to_disk('/home/salabeta/TFGFelix/CARLA-DSR/agents/CARLA_DSR/%.6d.png' % image.frame))
         # PEOPLE
@@ -174,6 +171,9 @@ class SpecificWorker(GenericWorker):
             print('Loading world...')
             self.world = self.client.load_world(map_name)
             print('Done')
+            # settings = self.world.get_settings()
+            # settings.synchronous_mode = True
+            # self.world.apply_settings(settings)
             print(f'Loading world took {time.time() - init_time:2.2f} seconds')
             self._blueprint_library = self.world.get_blueprint_library()
         else:
@@ -208,7 +208,7 @@ class SpecificWorker(GenericWorker):
         spawn_points = self.world.get_map().get_spawn_points()
         spawn_point = random.choice(spawn_points) if spawn_points else carla.Transform()
         self.ego_vehicle = self.world.try_spawn_actor(ego_bp, spawn_point)
-        self.world.on_tick(self.on_world_tick)
+        # self.world.on_tick(self.on_world_tick)
 
 
 
@@ -231,33 +231,35 @@ class SpecificWorker(GenericWorker):
         cam_bp = self._blueprint_library.find('sensor.camera.rgb')
         cam_bp.set_attribute("image_size_x", str(self.INPUT_HEIGHT))
         cam_bp.set_attribute("image_size_y", str(self.INPUT_WIDTH))
-        cam_bp.set_attribute("fov", str(105))
+        cam_bp.set_attribute("fov", str(65))
         dimensiones_Car = self.ego_vehicle.bounding_box.extent
         #In carla location is (pitch, yaw, roll) where pitch is y, yaw is z and roll is x
 
         for i in range(num_cams):
             if i == 0:
-                center_cam_location = carla.Location(dimensiones_Car.x, 0, dimensiones_Car.z)
-                center_cam_rotation = carla.Rotation(13, 0, 0)
+                center_cam_location = carla.Location(dimensiones_Car.x+0.02, 0, dimensiones_Car.z+1)
+                center_cam_rotation = carla.Rotation(0, 0, 0)
                 cam_transform = carla.Transform(center_cam_location, center_cam_rotation)
                 self.center_cam = self.world.spawn_actor(cam_bp, cam_transform, attach_to=self.ego_vehicle,
                                             attachment_type=carla.AttachmentType.Rigid)
                 self.center_cam.listen(lambda image: self.sensor_rgb_callback(image, "CenterCam"))
             elif i == 1:
-                left_cam_location = carla.Location(dimensiones_Car.x, 0, dimensiones_Car.z)
-                left_cam_rotation = carla.Rotation(13, -60, 0)
+                left_cam_location = carla.Location(dimensiones_Car.x, -0.02, dimensiones_Car.z+1)
+                left_cam_rotation = carla.Rotation(0, -60, 0)
                 #left_cam_rotation = carla.Rotation(0, 180+math.degrees(-0.244346), math.degrees(-np.pi/3))
                 left_cam_transform = carla.Transform(left_cam_location, left_cam_rotation)
                 self.left_cam = self.world.spawn_actor(cam_bp, left_cam_transform, attach_to=self.ego_vehicle,
                                                        attachment_type=carla.AttachmentType.Rigid)
                 self.left_cam.listen(lambda image: self.sensor_rgb_callback(image, "LeftCam"))
             elif i == 2:
-                right_cam_location = carla.Location(dimensiones_Car.x, 0, dimensiones_Car.z)
-                right_cam_rotation = carla.Rotation(13, 60, 0)
+                right_cam_location = carla.Location(dimensiones_Car.x, 0.02, dimensiones_Car.z+1)
+                right_cam_rotation = carla.Rotation(0, 60, 0)
                 #left_cam_rotation = carla.Rotation(0, 180+math.degrees(-0.244346), math.degrees(-np.pi/3))
                 right_cam_transform = carla.Transform(right_cam_location, right_cam_rotation)
+
                 self.right_cam = self.world.spawn_actor(cam_bp, right_cam_transform, attach_to=self.ego_vehicle,
                                                        attachment_type=carla.AttachmentType.Rigid)
+
                 self.right_cam.listen(lambda image: self.sensor_rgb_callback(image, "RightCam"))
 
 
@@ -276,11 +278,11 @@ class SpecificWorker(GenericWorker):
         v_f = cv2.hconcat([v_f, self.car_rgb_cams["RightCam"]])
         cv2.imshow("FrontCam", v_f)
         cv2.waitKey(1)
-        return v_f
+        print("IMAGEN")
 
 
     #Dudas de que hace
-    def on_world_tick(self, timestamp):
+    def on_world_tick(self):
         self._server_clock.tick()
         self.server_fps = self._server_clock.get_fps()
         if self.server_fps in [float("-inf"), float("inf")]:
@@ -343,23 +345,23 @@ class SpecificWorker(GenericWorker):
     # =============== DSR Methods  ================
     # =============================================
 
-    def update_node_att(self, id: int, attribute_names: [str]):
-        console.print(f"UPDATE NODE ATT: {id} {attribute_names}", style='green')
-
-    def update_node(self, id: int, type: str):
-        console.print(f"UPDATE NODE: {id} {type}", style='green')
-
-    def delete_node(self, id: int):
-        console.print(f"DELETE NODE:: {id} ", style='green')
-
-    def update_edge(self, fr: int, to: int, type: str):
-        console.print(f"UPDATE EDGE: {fr} to {to} {type}", style='green')
-
-    def update_edge_att(self, fr: int, to: int, type: str, attribute_names: [str]):
-        console.print(f"UPDATE EDGE ATT: {fr} to {to} {attribute_names}", style='green')
-
-    def delete_edge(self, fr: int, to: int, type: str):
-        console.print(f"DELETE EDGE: {fr} to {to} {type}", style='green')
+    # def update_node_att(self, id: int, attribute_names: [str]):
+    #     console.print(f"UPDATE NODE ATT: {id} {attribute_names}", style='green')
+    #
+    # def update_node(self, id: int, type: str):
+    #     console.print(f"UPDATE NODE: {id} {type}", style='green')
+    #
+    # def delete_node(self, id: int):
+    #     console.print(f"DELETE NODE:: {id} ", style='green')
+    #
+    # def update_edge(self, fr: int, to: int, type: str):
+    #     console.print(f"UPDATE EDGE: {fr} to {to} {type}", style='green')
+    #
+    # def update_edge_att(self, fr: int, to: int, type: str, attribute_names: [str]):
+    #     console.print(f"UPDATE EDGE ATT: {fr} to {to} {attribute_names}", style='green')
+    #
+    # def delete_edge(self, fr: int, to: int, type: str):
+    #     console.print(f"DELETE EDGE: {fr} to {to} {type}", style='green')
 
     ######################
     # From the RoboCompHumanToDSRPub you can use this types:

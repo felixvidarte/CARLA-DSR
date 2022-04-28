@@ -1,6 +1,6 @@
 import "HumanToDSRPub.idsl";
 
-Component human_social_spaces_dsr
+Component melex_simulation
 {
     Communications
     {
