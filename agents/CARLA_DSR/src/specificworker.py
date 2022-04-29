@@ -143,21 +143,6 @@ class Simulation:
         spawn_points = self.world.get_map().get_spawn_points()
         spawn_point = random.choice(spawn_points) if spawn_points else carla.Transform()
         self.ego_vehicle = self.world.try_spawn_actor(ego_bp, spawn_point)
-        # self.world.on_tick(self.on_world_tick)
-
-    def get_vehicles_from_dsr(self):
-        # Read and store people from dsr
-        vehicles_nodes = self.g.get_nodes_by_type('vehicle')
-        vehicles_list = []
-        for vehicle_node in vehicles_nodes:
-            vehicle_id = vehicle_node.attrs['vehicle_id'].value
-            edge_rt = self.rt_api.get_edge_RT(self.g.get_node("world"), vehicle_node.id)
-            tx, ty, tz = edge_rt.attrs['rt_translation'].value
-            rx, ry, rz = edge_rt.attrs['rt_rotation_euler_xyz'].value
-            vehicle_type = VehicleType(vehicle_id, tx, ty, tz, rx, ry, rz) #Comprobar cual hay que almacenar y cual no
-            vehicles_list.append(vehicle_type)
-
-        return vehicles_list
 
     def set_ego_rgb_frontal_cams(self, num_cams):
         cam_bp = self._blueprint_library.find('sensor.camera.rgb')
@@ -201,6 +186,7 @@ class Simulation:
         array = np.frombuffer(img.raw_data, dtype=np.dtype("uint8"))
         array = np.reshape(array, (self.INPUT_WIDTH, self.INPUT_HEIGHT, 4))
         array = array[:, :, :3]
+        print(sensorID)
         self.car_rgb_cams[sensorID] = array
         mutex.release()
 
@@ -276,6 +262,7 @@ class SpecificWorker(GenericWorker):
                 self.loaded = True
             while self.is_simulation:
                 self.simulator.world.tick()
+                self.simulator.ego_vehicle.apply_control(carla.VehicleControl(throttle=0.3))
                 self.simulator.mosaic()
                 print('IMAGEN')
 
@@ -317,12 +304,10 @@ class SpecificWorker(GenericWorker):
 
         for person in people_list:
             person_node_in_dsr = None
-
             for p_node in people_nodes:
                 if p_node.attrs['person_id'].value == person.id:
                     person_node_in_dsr = p_node
                     break
-
             # Update Node
             if person_node_in_dsr is not None:
 
@@ -337,23 +322,33 @@ class SpecificWorker(GenericWorker):
 
             # Create Node
             else:
-
                 node_name = 'person_' + str(person.id)
                 new_node = Node(agent_id=self.agent_id, type='person', name=node_name)
                 new_node.attrs['person_id'] = Attribute(person.id, self.agent_id)
                 new_node.attrs['pos_x'] = Attribute(25.0, self.agent_id)
                 new_node.attrs['pos_y'] = Attribute(50.0, self.agent_id)
-
                 try:
                     id_result = self.g.insert_node(new_node)
                     self.rt_api.insert_or_assign_edge_RT(self.g.get_node('world'), id_result,
                                                          [person.x, person.y, person.z], [.0, person.ry, .0])
                     print(' inserted new node  ', id_result)
-
                 except:
                     traceback.print_exc()
                     print('cant update node or add edge RT')
 
+    def get_vehicles_from_dsr(self):
+        # Read and store people from dsr
+        vehicles_nodes = self.g.get_nodes_by_type('vehicle')
+        vehicles_list = []
+        for vehicle_node in vehicles_nodes:
+            vehicle_id = vehicle_node.attrs['vehicle_id'].value
+            edge_rt = self.rt_api.get_edge_RT(self.g.get_node("world"), vehicle_node.id)
+            tx, ty, tz = edge_rt.attrs['rt_translation'].value
+            rx, ry, rz = edge_rt.attrs['rt_rotation_euler_xyz'].value
+            vehicle_type = VehicleType(vehicle_id, tx, ty, tz, rx, ry, rz) #Comprobar cual hay que almacenar y cual no
+            vehicles_list.append(vehicle_type)
+
+        return vehicles_list
     # ===================================================================
     # ===================================================================
 
@@ -365,7 +360,7 @@ class SpecificWorker(GenericWorker):
     #
     def update_node(self, id: int, type: str):
         if id == 200:
-            self.is_simulation= self.g.get_node('robot').attrs('simulation').value
+            self.is_simulation = self.g.get_node('robot').attrs['simulation'].value
         # console.print(f"UPDATE NODE: {id} {type}", style='green')
 
     # def delete_node(self, id: int):
