@@ -62,88 +62,23 @@ class VehicleType:
         self.rz = rz
 
 
-class SpecificWorker(GenericWorker):
-
-    def __init__(self, proxy_map, startup_check=False):
-        print("HOLA")
-        super(SpecificWorker, self).__init__(proxy_map)
-        self.Period = 50
-        # pygame.init()
-        # pygame.font.init()
-        self.agent_id = 121
-        self.g = DSRGraph(0, "CARLA_DSR", self.agent_id)
-        print("HOLA")
-        self.rt_api = rt_api(self.g)
+class Simulation:
+    def __init__(self, map='Town01'):
+        self.client = None
+        self.world = None
+        self._blueprint_library = None
+        self.ego_vehicle = None
+        self._vehicle = None
         self.INPUT_WIDTH = 424
         self.INPUT_HEIGHT = 240
         self.car_rgb_cams = {}
         self._server_clock = pygame.time.Clock()
-        self.client = None
-        self.world = None
-        self._blueprint_library = None
-        self._vehicle = None
-        self.ego_vehicle = None
         self.create_client() #Inicializamos conexión con Carla
         self.client.set_timeout(2.0)
-        self.initialize_world('Town02') #Cargamos Mapa (En este caso Town01, hay que cambiar por el nuestro)
-        self.world.wait_for_tick()
+        self.initialize_world(map) #Cargamos Mapa (En este caso Town01, hay que cambiar por el nuestro)
+        # self.world.wait_for_tick()
         self.load_ego_vehicle()
         self.set_ego_rgb_frontal_cams(3)
-
-        # try:
-        #     signals.connect(self.g, signals.UPDATE_NODE_ATTR, self.update_node_att)
-        #     signals.connect(self.g, signals.UPDATE_NODE, self.update_node)
-        #     signals.connect(self.g, signals.DELETE_NODE, self.delete_node)
-        #     signals.connect(self.g, signals.UPDATE_EDGE, self.update_edge)
-        #     signals.connect(self.g, signals.UPDATE_EDGE_ATTR, self.update_edge_att)
-        #     signals.connect(self.g, signals.DELETE_EDGE, self.delete_edge)
-        #     print("signals connected")
-        # except RuntimeError as e:
-        #     print(e)
-
-        self.personal_spaces_manager = PersonalSpacesManager()
-
-        if startup_check:
-            self.startup_check()
-        else:
-            self.timer.timeout.connect(self.compute)
-            self.timer.start(self.Period)
-
-    def __del__(self):
-        if self.world is not None:
-            for actor in self.world.get_actors():
-                actor.destroy()
-            self.world.destroy()
-
-        print('SpecificWorker destructor')
-
-    def setParams(self, params):
-        return True
-
-    @QtCore.Slot()
-    def compute(self):
-        self.mosaic()
-        # if self.i == 0:
-        #     self.world.on_tick(self.on_world_tick)
-        #     self.i = 1
-        # cv2.imshow("CenterCam", self.car_rgb_cams["CenterCam"])
-        # cv2.waitKey(1)
-        # cv2.imshow("LeftCam", self.car_rgb_cams["LeftCam"])
-        # cv2.waitKey(1)
-        print("HOLA")
-
-        # imagecompuesta = self.mosaic()
-
-        #ego_cam.listen(lambda image: image.save_to_disk('/home/salabeta/TFGFelix/CARLA-DSR/agents/CARLA_DSR/%.6d.png' % image.frame))
-        # PEOPLE
-        # vehicle_list = self.get_vehicles_from_dsr()
-        # for vehicle in vehicle_list:
-        #     self.load_vehicle(vehicle)
-        return True
-
-
-    def startup_check(self):
-        QTimer.singleShot(200, QApplication.instance().quit)
 
     def create_client(self, host=None, port=None):
         if port is None:
@@ -170,6 +105,9 @@ class SpecificWorker(GenericWorker):
             init_time = time.time()
             print('Loading world...')
             self.world = self.client.load_world(map_name)
+            settings = self.world.get_settings()
+            settings.synchronous_mode = True
+            self.world.apply_settings(settings)
             print('Done')
             # settings = self.world.get_settings()
             # settings.synchronous_mode = True
@@ -178,9 +116,6 @@ class SpecificWorker(GenericWorker):
             self._blueprint_library = self.world.get_blueprint_library()
         else:
             console.log("No carla client created. Call create_client first.", style="red")
-
-
-
 
     def load_vehicle(self, vehicle):
         choices = self.world.get_blueprint_library().filter('vehicle.*')
@@ -210,8 +145,6 @@ class SpecificWorker(GenericWorker):
         self.ego_vehicle = self.world.try_spawn_actor(ego_bp, spawn_point)
         # self.world.on_tick(self.on_world_tick)
 
-
-
     def get_vehicles_from_dsr(self):
         # Read and store people from dsr
         vehicles_nodes = self.g.get_nodes_by_type('vehicle')
@@ -226,44 +159,42 @@ class SpecificWorker(GenericWorker):
 
         return vehicles_list
 
-    #Place three frontal rgb cams
     def set_ego_rgb_frontal_cams(self, num_cams):
         cam_bp = self._blueprint_library.find('sensor.camera.rgb')
         cam_bp.set_attribute("image_size_x", str(self.INPUT_HEIGHT))
         cam_bp.set_attribute("image_size_y", str(self.INPUT_WIDTH))
         cam_bp.set_attribute("fov", str(65))
         dimensiones_Car = self.ego_vehicle.bounding_box.extent
-        #In carla location is (pitch, yaw, roll) where pitch is y, yaw is z and roll is x
+        # In carla location is (pitch, yaw, roll) where pitch is y, yaw is z and roll is x
 
         for i in range(num_cams):
             if i == 0:
-                center_cam_location = carla.Location(dimensiones_Car.x+0.02, 0, dimensiones_Car.z+1)
+                center_cam_location = carla.Location(dimensiones_Car.x + 0.02, 0, dimensiones_Car.z + 1)
                 center_cam_rotation = carla.Rotation(0, 0, 0)
                 cam_transform = carla.Transform(center_cam_location, center_cam_rotation)
                 self.center_cam = self.world.spawn_actor(cam_bp, cam_transform, attach_to=self.ego_vehicle,
-                                            attachment_type=carla.AttachmentType.Rigid)
+                                                         attachment_type=carla.AttachmentType.Rigid)
                 self.center_cam.listen(lambda image: self.sensor_rgb_callback(image, "CenterCam"))
             elif i == 1:
-                left_cam_location = carla.Location(dimensiones_Car.x, -0.02, dimensiones_Car.z+1)
+                left_cam_location = carla.Location(dimensiones_Car.x, -0.02, dimensiones_Car.z + 1)
                 left_cam_rotation = carla.Rotation(0, -60, 0)
-                #left_cam_rotation = carla.Rotation(0, 180+math.degrees(-0.244346), math.degrees(-np.pi/3))
+                # left_cam_rotation = carla.Rotation(0, 180+math.degrees(-0.244346), math.degrees(-np.pi/3))
                 left_cam_transform = carla.Transform(left_cam_location, left_cam_rotation)
                 self.left_cam = self.world.spawn_actor(cam_bp, left_cam_transform, attach_to=self.ego_vehicle,
                                                        attachment_type=carla.AttachmentType.Rigid)
                 self.left_cam.listen(lambda image: self.sensor_rgb_callback(image, "LeftCam"))
             elif i == 2:
-                right_cam_location = carla.Location(dimensiones_Car.x, 0.02, dimensiones_Car.z+1)
+                right_cam_location = carla.Location(dimensiones_Car.x, 0.02, dimensiones_Car.z + 1)
                 right_cam_rotation = carla.Rotation(0, 60, 0)
-                #left_cam_rotation = carla.Rotation(0, 180+math.degrees(-0.244346), math.degrees(-np.pi/3))
+                # left_cam_rotation = carla.Rotation(0, 180+math.degrees(-0.244346), math.degrees(-np.pi/3))
                 right_cam_transform = carla.Transform(right_cam_location, right_cam_rotation)
 
                 self.right_cam = self.world.spawn_actor(cam_bp, right_cam_transform, attach_to=self.ego_vehicle,
-                                                       attachment_type=carla.AttachmentType.Rigid)
+                                                        attachment_type=carla.AttachmentType.Rigid)
 
                 self.right_cam.listen(lambda image: self.sensor_rgb_callback(image, "RightCam"))
 
-
-    #Compute np array for rgb sensors
+    # Compute np array for rgb sensors
     def sensor_rgb_callback(self, img, sensorID):
         global mutex
         mutex.acquire()
@@ -280,14 +211,98 @@ class SpecificWorker(GenericWorker):
         cv2.waitKey(1)
         print("IMAGEN")
 
-
-    #Dudas de que hace
+    # Dudas de que hace
     def on_world_tick(self):
         self._server_clock.tick()
         self.server_fps = self._server_clock.get_fps()
         if self.server_fps in [float("-inf"), float("inf")]:
             self.server_fps = -1
         print('Server FPS', int(self.server_fps))
+
+    def __del__(self):
+        if self.world is not None:
+            for actor in self.world.get_actors():
+                actor.destroy()
+            self.world.destroy()
+        print('Simulation destruction')
+
+
+class SpecificWorker(GenericWorker):
+
+    def __init__(self, proxy_map, startup_check=False):
+        super(SpecificWorker, self).__init__(proxy_map)
+        self.Period = 50
+        # pygame.init()
+        # pygame.font.init()
+        self.agent_id = 121
+        self.g = DSRGraph(0, "CARLA_DSR", self.agent_id)
+        self.rt_api = rt_api(self.g)
+        self.simulator = None
+        self.is_simulation = True
+        self.loaded = False
+
+        # try:
+        #     signals.connect(self.g, signals.UPDATE_NODE_ATTR, self.update_node_att)
+        #     signals.connect(self.g, signals.UPDATE_NODE, self.update_node)
+        #     signals.connect(self.g, signals.DELETE_NODE, self.delete_node)
+        #     signals.connect(self.g, signals.UPDATE_EDGE, self.update_edge)
+        #     signals.connect(self.g, signals.UPDATE_EDGE_ATTR, self.update_edge_att)
+        #     signals.connect(self.g, signals.DELETE_EDGE, self.delete_edge)
+        #     print("signals connected")
+        # except RuntimeError as e:
+        #     print(e)
+
+        self.personal_spaces_manager = PersonalSpacesManager()
+
+        if startup_check:
+            self.startup_check()
+        else:
+            self.timer.timeout.connect(self.compute)
+            self.timer.start(self.Period)
+
+    def __del__(self):
+        print('SpecificWorker destructor')
+
+    def setParams(self, params):
+        return True
+
+    @QtCore.Slot()
+    def compute(self):
+        robot = self.g.get_node('robot')
+        if robot:
+            # self.is_simulation = robot.attrs['simulation'].value
+            if self.is_simulation and (not self.loaded):
+                self.simulator = Simulation()
+                self.loaded = True
+            while self.is_simulation:
+                self.simulator.world.tick()
+                self.simulator.mosaic()
+                print('IMAGEN')
+
+
+        # if self.i == 0:
+        #     self.world.on_tick(self.on_world_tick)
+        #     self.i = 1
+        # cv2.imshow("CenterCam", self.car_rgb_cams["CenterCam"])
+        # cv2.waitKey(1)
+        # cv2.imshow("LeftCam", self.car_rgb_cams["LeftCam"])
+        # cv2.waitKey(1)
+        print("HOLA")
+
+        # imagecompuesta = self.mosaic()
+
+        #ego_cam.listen(lambda image: image.save_to_disk('/home/salabeta/TFGFelix/CARLA-DSR/agents/CARLA_DSR/%.6d.png' % image.frame))
+        # PEOPLE
+        # vehicle_list = self.get_vehicles_from_dsr()
+        # for vehicle in vehicle_list:
+        #     self.load_vehicle(vehicle)
+        return True
+
+    def startup_check(self):
+        QTimer.singleShot(200, QApplication.instance().quit)
+
+
+    #Place three frontal rgb cams
     # =============== Methods for Component SubscribesTo ================
     # ===================================================================
 
@@ -348,9 +363,11 @@ class SpecificWorker(GenericWorker):
     # def update_node_att(self, id: int, attribute_names: [str]):
     #     console.print(f"UPDATE NODE ATT: {id} {attribute_names}", style='green')
     #
-    # def update_node(self, id: int, type: str):
-    #     console.print(f"UPDATE NODE: {id} {type}", style='green')
-    #
+    def update_node(self, id: int, type: str):
+        if id == 200:
+            self.is_simulation= self.g.get_node('robot').attrs('simulation').value
+        # console.print(f"UPDATE NODE: {id} {type}", style='green')
+
     # def delete_node(self, id: int):
     #     console.print(f"DELETE NODE:: {id} ", style='green')
     #
