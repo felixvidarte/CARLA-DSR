@@ -64,6 +64,52 @@
                             }
                         },
                         "src": "1"
+                    },
+                    {
+                        "dst": "70671102090674196",
+                        "label": "RT",
+                        "linkAttribute": {
+                            "rt_rotation_euler_xyz": {
+                                "type": 3,
+                                "value": [
+                                    0,
+                                    0,
+                                    0
+                                ]
+                            },
+                            "rt_translation": {
+                                "type": 3,
+                                "value": [
+                                    0,
+                                    0,
+                                    0
+                                ]
+                            }
+                        },
+                        "src": "1"
+                    },
+                    {
+                        "dst": "70671149972848660",
+                        "label": "RT",
+                        "linkAttribute": {
+                            "rt_rotation_euler_xyz": {
+                                "type": 3,
+                                "value": [
+                                    0,
+                                    0,
+                                    0
+                                ]
+                            },
+                            "rt_translation": {
+                                "type": 3,
+                                "value": [
+                                    0,
+                                    0,
+                                    0
+                                ]
+                            }
+                        },
+                        "src": "1"
                     }
                 ],
                 "name": "world",
@@ -97,11 +143,11 @@
                     },
                     "pos_x": {
                         "type": 2,
-                        "value": -0.67
+                        "value": -0.66679
                     },
                     "pos_y": {
                         "type": 2,
-                        "value": -198.220001
+                        "value": -198.217484
                     },
                     "ref_adv_speed": {
                         "type": 2,
@@ -118,18 +164,14 @@
                     "robot_local_linear_velocity": {
                         "type": 3,
                         "value": [
-                            2.569999933242798,
-                            -0.03999999910593033,
-                            -6.28000020980835
+                            2.574920415878296,
+                            -0.038136374205350876,
+                            -6.283181190490723
                         ]
                     },
                     "robot_occupied": {
                         "type": 4,
                         "value": true
-                    },
-                    "simulation": {
-                        "type": 4,
-                        "value": false
                     }
                 },
                 "id": "200",
@@ -1082,6 +1124,64 @@
                 ],
                 "name": "odometry",
                 "type": "odometry"
+            },
+            "70671102090674196": {
+                "attribute": {
+                    "color": {
+                        "type": 0,
+                        "value": "GoldenRod"
+                    },
+                    "level": {
+                        "type": 1,
+                        "value": 1
+                    },
+                    "parent": {
+                        "type": 7,
+                        "value": "1"
+                    },
+                    "pos_x": {
+                        "type": 2,
+                        "value": -407.87439
+                    },
+                    "pos_y": {
+                        "type": 2,
+                        "value": -849.482788
+                    }
+                },
+                "id": "70671102090674196",
+                "links": [
+                ],
+                "name": "Vehicle1",
+                "type": "vehicle"
+            },
+            "70671149972848660": {
+                "attribute": {
+                    "color": {
+                        "type": 0,
+                        "value": "GoldenRod"
+                    },
+                    "level": {
+                        "type": 1,
+                        "value": 1
+                    },
+                    "parent": {
+                        "type": 7,
+                        "value": "1"
+                    },
+                    "pos_x": {
+                        "type": 2,
+                        "value": -377.207153
+                    },
+                    "pos_y": {
+                        "type": 2,
+                        "value": -647.078918
+                    }
+                },
+                "id": "70671149972848660",
+                "links": [
+                ],
+                "name": "Vehicle2",
+                "type": "vehicle"
             }
         }
     }
