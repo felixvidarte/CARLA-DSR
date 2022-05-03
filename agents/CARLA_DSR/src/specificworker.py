@@ -55,6 +55,7 @@ class SpecificWorker(GenericWorker):
         self.simulator = None
         self.is_simulation = True
         self.loaded = False
+        self.ghost_nodes = []
 
         # try:
         #     signals.connect(self.g, signals.UPDATE_NODE_ATTR, self.update_node_att)
@@ -95,6 +96,7 @@ class SpecificWorker(GenericWorker):
                 self.simulator.ego_vehicle.apply_control(carla.VehicleControl(throttle=0.3))
                 self.simulator.mosaic()
                 print('IMAGEN')
+            self.delete_ghost_node()
 
 
         # if self.i == 0:
@@ -128,43 +130,51 @@ class SpecificWorker(GenericWorker):
     #
 
     def get_vehicles_from_dsr(self):
-
         # Read and store people from dsr
+        vehicles_list = []
         robot = self.g.get_node('robot')
         edge_rt = self.rt_api.get_edge_RT(self.g.get_node('world'), robot.attrs['ID'].value)
         tx, ty, tz = edge_rt.attrs['rt_translation'].value
         rx, ry, rz = edge_rt.attrs['rt_rotation_euler_xyz'].value
-        ego = VehicleType(robot.id, tx, ty, tz, rx, ry, rz)
-        vehicles_list = []
+        ego = VehicleType(robot.id, 'ego', tx, ty, tz, rx, ry, rz)
          # Comprobar cual hay que almacenar y cual no
+        self.create_ghost_node(robot, ego)
         vehicles_nodes = self.g.get_nodes_by_type('vehicle')
         for vehicle_node in vehicles_nodes:
-            self.create_ghost_node(vehicle_node)
             edge_rt = self.rt_api.get_edge_RT(self.g.get_node("world"), vehicle_node.id)
             tx, ty, tz = edge_rt.attrs['rt_translation'].value
             rx, ry, rz = edge_rt.attrs['rt_rotation_euler_xyz'].value
             vehicle_type = VehicleType(vehicle_node.id, tx, ty, tz, rx, ry, rz) #Comprobar cual hay que almacenar y cual no
+            self.create_ghost_node(vehicle_node, vehicle_type)
             vehicles_list.append(vehicle_type)
 
         return ego, vehicles_list
 
-    def create_ghost_node(self, vehicle_node):
-        node_name = vehicle_node.attrs['name'] + '_ghost'
-        new_node = Node(agent_id=self.agent_id, type=vehicle_node.attrs['type'], name=node_name)
+    def create_ghost_node(self, vehicle_node, vehicle_type):
+        node_name = vehicle_node.name + '_ghost'
+        new_node = Node(agent_id=self.agent_id, type=vehicle_node.type, name=node_name)
         new_node.attrs['pos_x'] = Attribute(vehicle_node.attrs['pos_x'].value+25, self.agent_id)
         new_node.attrs['pos_y'] = Attribute(vehicle_node.attrs['pos_y'].value+25, self.agent_id)
         try:
             id_result = self.g.insert_node(new_node)
+            self.ghost_nodes.append(new_node)
             console.print('Ghost node created -- ', id_result, style='red')
             has_edge = Edge(id_result, vehicle_node.id, 'has', self.agent_id)
             self.g.insert_or_assign_edge(has_edge)
-            self.rt_api.insert_or_assign_edge_RT(self.g.get_node('world'), id_result,[],[])
-
+            self.rt_api.insert_or_assign_edge_RT(self.g.get_node('world'), id_result, [vehicle_type.tx, vehicle_type.ty, vehicle_type.tz], [vehicle_type.rx, vehicle_type.ry, vehicle_type.rz])
             print(' inserted new node  ', id_result)
 
         except:
             traceback.print_exc()
             print('cant insert node or add edge RT')
+
+    def delete_ghost_node(self,):
+        for node in self.ghost_nodes:
+            for edge in node.edges:
+                self.g.delete_edge(edge.origin, edge.destination, edge.type)
+            self.g.delete_node(node.id)
+        self.ghost_nodes = []
+
 
     # ===================================================================
     # ===================================================================

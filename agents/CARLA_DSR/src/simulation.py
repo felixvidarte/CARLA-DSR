@@ -10,8 +10,9 @@ from rich.console import Console
 
 console = Console(highlight=False)
 
+
 class VehicleType:
-    def __init__(self, id=None, category="actor", tx=0, ty=0, tz=0, rx=0, ry=0, rz=0):
+    def __init__(self, id=None, tx=0, ty=0, tz=0, rx=0, ry=0, rz=0):
         self.id = id
         self.tx = tx
         self.ty = ty
@@ -79,7 +80,7 @@ class Simulation:
             choices = self.world.get_blueprint_library().filter('vehicle.*')
             vehicle_blueprint = random.choice(choices)
             try:
-                spawn_point = carla.Transform(carla.Location(x=vehicle.tx, y=vehicle.ty, z=vehicle.tz + 2), carla.Rotation(0, 0, vehicle.rz)) #Comprobar angulos CARLA-ROBOCOMP
+                spawn_point = carla.Transform(carla.Location(x=vehicle.tx, y=vehicle.ty, z=vehicle.tz + 2), carla.Rotation(vehicle.rx, vehicle.ry, vehicle.rz)) #Comprobar angulos CARLA-ROBOCOMP
                 self._vehicles.append(self.world.try_spawn_actor(vehicle_blueprint, spawn_point))
             except:
                 print("Error to loaded vehicle")
@@ -89,7 +90,7 @@ class Simulation:
         ego_bp.set_attribute('role_name', 'ego')
         try:
             spawn_point = carla.Transform(carla.Location(x=vehicle.tx, y=vehicle.ty, z=vehicle.tz + 2),
-                                          carla.Rotation(0, 0, vehicle.rz))  # Comprobar angulos CARLA-ROBOCOMP
+                                          carla.Rotation(vehicle.rx, vehicle.ry, vehicle.rz))  # Comprobar angulos CARLA-ROBOCOMP
             self._vehicles.append(self.world.spawn_actor(ego_bp, spawn_point))
         except:
             print("Error to loaded vehicle")
