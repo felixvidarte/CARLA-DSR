@@ -1,15 +1,12 @@
-import "HumanToDSRPub.idsl";
+
 
 Component melex_simulation
 {
     Communications
     {
-        
-        subscribesTo HumanToDSRPub;
-       
+    
     };
     language python;
     options dsr;
-    
 };
 
