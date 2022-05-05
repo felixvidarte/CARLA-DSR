@@ -53,6 +53,7 @@ class SpecificWorker(GenericWorker):
         self.simulator = None
         self.is_simulation = True
         self.loaded = False
+        self.vehicle_list = []
         self.ghost_nodes = []
 
         # try:
@@ -73,6 +74,7 @@ class SpecificWorker(GenericWorker):
             self.timer.start(self.Period)
 
     def __del__(self):
+        self.delete_ghost_node()
         print('SpecificWorker destructor')
 
     def setParams(self, params):
@@ -86,14 +88,17 @@ class SpecificWorker(GenericWorker):
             if self.is_simulation and (not self.loaded):
                 print(self.loaded)
                 self.simulator = Simulation()
-                [ego, others] = self.get_vehicles_from_dsr()
-                self.simulator.load_ego_vehicle(ego)
-                self.simulator.load_vehicles(others)
+                self.vehicle_list = self.get_vehicles_from_dsr()
+                self.simulator.load_vehicles(self.vehicle_list)
                 self.loaded = True
             while self.is_simulation:
                 self.simulator.world.tick()
-                self.simulator.ego_vehicle.apply_control(carla.VehicleControl(throttle=0.3))
+                self.simulator.vehicles[0].apply_control(carla.VehicleControl(throttle=0.3))
+                for vehicle in self.vehicle_list:
+                    self.create_or_update_virtual_RT_edges(vehicle)
+                print(self.simulator.vehicles)
                 self.simulator.mosaic()
+
 
                 print('IMAGEN')
             self.delete_ghost_node()
@@ -120,7 +125,6 @@ class SpecificWorker(GenericWorker):
     def startup_check(self):
         QTimer.singleShot(200, QApplication.instance().quit)
 
-
     #Place three frontal rgb cams
     # =============== Methods for Component SubscribesTo ================
     # ===================================================================
@@ -128,27 +132,49 @@ class SpecificWorker(GenericWorker):
     #
     # SUBSCRIPTION to newPeopleData method from HumanToDSRPub interface
     #
-
     def get_vehicles_from_dsr(self):
         # Read and store people from dsr
         vehicles_list = []
         robot = self.g.get_node('robot')
         edge_rt = self.rt_api.get_edge_RT(self.g.get_node('world'), robot.id)
-        tx, ty, tz = edge_rt.attrs['rt_translation'].value
+        x, y, z = edge_rt.attrs['rt_translation'].value
+        pos = [x, y, z]
         rx, ry, rz = edge_rt.attrs['rt_rotation_euler_xyz'].value
-        ego = VehicleType(robot.id, 'ego', tx, ty, tz, rx, ry, rz)
+        rot = [rx, ry, rz]
+        ego = VehicleType(robot.id, pos, rot)
+        print(ego.pos)
+        #self.create_ghost_node(robot, ego)
+        vehicles_list.append(ego)
          # Comprobar cual hay que almacenar y cual no
-        self.create_ghost_node(robot, ego)
         vehicles_nodes = self.g.get_nodes_by_type('vehicle')
         for vehicle_node in vehicles_nodes:
             edge_rt = self.rt_api.get_edge_RT(self.g.get_node("world"), vehicle_node.id)
-            tx, ty, tz = edge_rt.attrs['rt_translation'].value
+            x, y, z = edge_rt.attrs['rt_translation'].value
+            pos = [float(x), float(y), float(z)]
             rx, ry, rz = edge_rt.attrs['rt_rotation_euler_xyz'].value
-            vehicle_type = VehicleType(vehicle_node.id, tx, ty, tz, rx, ry, rz) #Comprobar cual hay que almacenar y cual no
-            self.create_ghost_node(vehicle_node, vehicle_type)
-            vehicles_list.append(vehicle_type)
+            rot = [float(rx), float(ry), float(rx)]
+            vehicle = VehicleType(vehicle_node.id, pos, rot) #Comprobar cual hay que almacenar y cual no
+            #self.create_ghost_node(vehicle_node, vehicle)
+            vehicles_list.append(vehicle)
+        return vehicles_list
 
-        return ego, vehicles_list
+    def create_or_update_virtual_RT_edges(self, vehicle_type):
+        print(vehicle_type.id, vehicle_type.pos)
+        node = self.g.get_node(vehicle_type.id)
+        print(node.name)
+        virtual_edge = self.g.get_edge("world", node.name, "virtual_RT")
+        print(virtual_edge)
+        if virtual_edge is None:
+            world = self.g.get_node("world")
+            virtual_RT = Edge(node.id, world.id, "virtual_RT", self.agent_id)
+            print(Attribute(vehicle_type.pos, self.agent_id))
+            virtual_RT.attrs["rt_translation"] = Attribute(vehicle_type.pos, self.agent_id)
+            virtual_RT.attrs["rt_rotation_euler_xyz"] = Attribute(vehicle_type.rot, self.agent_id)
+            self.g.insert_or_assign_edge(virtual_RT)
+        else:
+            virtual_edge.attrs["rt_translation"] = Attribute(vehicle_type.pos, self.agent_id)
+            virtual_edge.attrs["rt_rotation_euler_xyz"] = Attribute(vehicle_type.rot, self.agent_id)
+            self.g.insert_or_assign_edge(virtual_edge)
 
     def create_ghost_node(self, vehicle_node, vehicle_type):
         node_name = vehicle_node.name + '_ghost'
@@ -156,13 +182,13 @@ class SpecificWorker(GenericWorker):
         new_node.attrs['pos_x'] = Attribute(vehicle_node.attrs['pos_x'].value+25, self.agent_id)
         new_node.attrs['pos_y'] = Attribute(vehicle_node.attrs['pos_y'].value+25, self.agent_id)
         try:
-            id_result = self.g.insert_node(new_node)
+            self.g.insert_node(new_node)
             self.ghost_nodes.append(new_node)
-            console.print('Ghost node created -- ', id_result, style='red')
-            has_edge = Edge(id_result, vehicle_node.id, 'has', self.agent_id)
+            console.print('Ghost node created -- ', new_node.id, style='red')
+            has_edge = Edge(new_node.id, vehicle_node.id, 'has', self.agent_id)
             self.g.insert_or_assign_edge(has_edge)
-            self.rt_api.insert_or_assign_edge_RT(self.g.get_node('world'), id_result, [vehicle_type.tx, vehicle_type.ty, vehicle_type.tz], [vehicle_type.rx, vehicle_type.ry, vehicle_type.rz])
-            print(' inserted new node  ', id_result)
+            self.rt_api.insert_or_assign_edge_RT(self.g.get_node('world'), new_node.id, vehicle_type.pos, vehicle_type.rot)
+            print(' inserted new node  ', vehicle_type.id)
 
         except:
             traceback.print_exc()
@@ -190,7 +216,8 @@ class SpecificWorker(GenericWorker):
     def update_node(self, id: int, type: str):
         if id == 200:
             self.is_simulation = self.g.get_node('robot').attrs['simulation'].value
-        # console.print(f"UPDATE NODE: {id} {type}", style='green')
+        else:
+            console.print(f"UPDATE NODE: {id} {type}", style='green')
 
     # def delete_node(self, id: int):
     #     console.print(f"DELETE NODE:: {id} ", style='green')
