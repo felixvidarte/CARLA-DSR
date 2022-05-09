@@ -14,8 +14,8 @@ console = Console(highlight=False)
 
 
 class VehicleType:
-    def __init__(self, id=None, pos=[0.0, 0.0, 0.0], rot=[0.0, 0.0, 0.0]):
-        self.id = id
+    def __init__(self, node_id=None, pos=[0.0, 0.0, 0.0], rot=[0.0, 0.0, 0.0]):
+        self.node_id = node_id
         self.pos = pos
         self.rot = rot
 
@@ -27,6 +27,7 @@ class Simulation:
         self._blueprint_library = None
         self.ego_vehicle = None
         self.vehicles = []
+        self.collision = []
         self.INPUT_WIDTH = 424
         self.INPUT_HEIGHT = 240
         self.car_rgb_cams = {}
@@ -34,6 +35,8 @@ class Simulation:
         self.create_client() #Inicializamos conexión con Carla
         self.client.set_timeout(2.0)
         self.initialize_world(map) #Cargamos Mapa (En este caso Town01, hay que cambiar por el nuestro)
+        self.tm = self.client.get_trafficmanager(self.port)
+        self.tm_port = self.tm.get_port()
         # self.world.wait_for_tick()
 
     def create_client(self, host=None, port=None):
@@ -86,7 +89,7 @@ class Simulation:
             spawn_point = random.choice(spawn_points) if spawn_points else carla.Transform()
             print("Error to loaded vehicle")
         self.vehicles.append(self.world.try_spawn_actor(ego_bp, spawn_point))
-        self.set_ego_rgb_frontal_cams(self.vehicles[0], 3)
+        self.set_ego_sensors(self.vehicles[0], 3)
         for vehicle in vehicles:
             choices = self.world.get_blueprint_library().filter('vehicle.*')
             vehicle_blueprint = random.choice(choices)
@@ -99,7 +102,7 @@ class Simulation:
                 print("Error to loaded vehicle")
             self.vehicles.append(self.world.try_spawn_actor(vehicle_blueprint, spawn_point))
 
-    def set_ego_rgb_frontal_cams(self, ego_vehicle, num_cams):
+    def set_ego_sensors(self, ego_vehicle, num_cams):
         cam_bp = self._blueprint_library.find('sensor.camera.rgb')
         cam_bp.set_attribute("image_size_x", str(self.INPUT_HEIGHT))
         cam_bp.set_attribute("image_size_y", str(self.INPUT_WIDTH))
@@ -133,15 +136,18 @@ class Simulation:
                                                         attachment_type=carla.AttachmentType.Rigid)
 
                 self.right_cam.listen(lambda image: self.sensor_rgb_callback(image, "RightCam"))
+        collision_bp = self._blueprint_library.find('sensor.other.collision')
+        self.collision_sensor = self.world.spawn_actor(collision_bp, cam_transform, attach_to=self.ego_vehicle, attachment_type=carla.AttachmentType.Rigid)
+        self.collision_sensor.listen(lambda collision: self.collision_callback(collision))
 
     # Compute np array for rgb sensors
-    def sensor_rgb_callback(self, img, sensorID):
+    def sensor_rgb_callback(self, img, sensor_id):
         global mutex
         mutex.acquire()
         array = np.frombuffer(img.raw_data, dtype=np.dtype("uint8"))
         array = np.reshape(array, (self.INPUT_WIDTH, self.INPUT_HEIGHT, 4))
         array = array[:, :, :3]
-        self.car_rgb_cams[sensorID] = array
+        self.car_rgb_cams[sensor_id] = array
         mutex.release()
 
     def mosaic(self):
@@ -150,6 +156,9 @@ class Simulation:
         cv2.imshow("FrontCam", v_f)
         cv2.waitKey(1)
 
+    def collision_callback(self, collision):
+        print("Collision with", collision.other_actor.type_id)
+        self.collision.append(collision)
     # Dudas de que hace
     # def on_world_tick(self):
     #     self._server_clock.tick()

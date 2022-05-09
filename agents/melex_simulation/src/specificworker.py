@@ -91,10 +91,16 @@ class SpecificWorker(GenericWorker):
                 self.vehicle_list = self.get_vehicles_from_dsr()
                 self.simulator.load_vehicles(self.vehicle_list)
                 self.loaded = True
+                for v in self.simulator.vehicles:
+                    v.set_autopilot(True, self.simulator.tm_port)
+                danger_car = self.simulator.vehicles[1]
+                self.simulator.tm.ignore_lights_percentage(danger_car, 100)
+                self.simulator.tm.distance_to_leading_vehicle(danger_car, 0)
+                self.simulator.tm.vehicle_percentage_speed_difference(danger_car, -20)
             while self.is_simulation:
                 self.simulator.world.tick()
                 self.simulator.vehicles[0].apply_control(carla.VehicleControl(throttle=0.3))
-                for vehicle in self.vehicle_list:
+                for vehicle, vehicle_actor in self.vehicle_list, self.simulator.vehicles:
                     self.create_or_update_virtual_RT_edges(vehicle)
                 print(self.simulator.vehicles)
                 self.simulator.mosaic()
@@ -175,6 +181,9 @@ class SpecificWorker(GenericWorker):
             virtual_edge.attrs["rt_translation"] = Attribute(vehicle_type.pos, self.agent_id)
             virtual_edge.attrs["rt_rotation_euler_xyz"] = Attribute(vehicle_type.rot, self.agent_id)
             self.g.insert_or_assign_edge(virtual_edge)
+
+    def delete_virtual_RT_edge:
+        edges = self.g.get_edge
 
     def create_ghost_node(self, vehicle_node, vehicle_type):
         node_name = vehicle_node.name + '_ghost'
