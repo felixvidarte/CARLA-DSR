@@ -74,7 +74,7 @@ class SpecificWorker(GenericWorker):
             self.timer.start(self.Period)
 
     def __del__(self):
-        self.delete_ghost_node()
+        self.delete_virtual_rt_edge()
         print('SpecificWorker destructor')
 
     def setParams(self, params):
@@ -86,46 +86,27 @@ class SpecificWorker(GenericWorker):
         if robot:
             # self.is_simulation = robot.attrs['simulation'].value
             if self.is_simulation and (not self.loaded):
-                print(self.loaded)
                 self.simulator = Simulation()
                 self.vehicle_list = self.get_vehicles_from_dsr()
                 self.simulator.load_vehicles(self.vehicle_list)
                 self.loaded = True
-                for v in self.simulator.vehicles:
+                for v in self.simulator.carla_vehicles:
                     v.set_autopilot(True, self.simulator.tm_port)
-                danger_car = self.simulator.vehicles[1]
+                danger_car = self.simulator.carla_vehicles[1]
                 self.simulator.tm.ignore_lights_percentage(danger_car, 100)
                 self.simulator.tm.distance_to_leading_vehicle(danger_car, 0)
                 self.simulator.tm.vehicle_percentage_speed_difference(danger_car, -20)
             while self.is_simulation:
                 self.simulator.world.tick()
-                self.simulator.vehicles[0].apply_control(carla.VehicleControl(throttle=0.3))
-                for vehicle, vehicle_actor in self.vehicle_list, self.simulator.vehicles:
-                    self.create_or_update_virtual_RT_edges(vehicle)
-                print(self.simulator.vehicles)
+                self.simulator.carla_vehicles[0].apply_control(carla.VehicleControl(throttle=0.3))
+                for vehicle in self.vehicle_list:
+                    self.update_virtual_rt_edges(vehicle)
                 self.simulator.mosaic()
-
-
                 print('IMAGEN')
+
+            self.delete_virtual_rt_edge()
             self.delete_ghost_node()
 
-
-        # if self.i == 0:
-        #     self.world.on_tick(self.on_world_tick)
-        #     self.i = 1
-        # cv2.imshow("CenterCam", self.car_rgb_cams["CenterCam"])
-        # cv2.waitKey(1)
-        # cv2.imshow("LeftCam", self.car_rgb_cams["LeftCam"])
-        # cv2.waitKey(1)
-        print("HOLA")
-
-        # imagecompuesta = self.mosaic()
-
-        #ego_cam.listen(lambda image: image.save_to_disk('/home/salabeta/TFGFelix/CARLA-DSR/agents/CARLA_DSR/%.6d.png' % image.frame))
-        # PEOPLE
-        # vehicle_list = self.get_vehicles_from_dsr()
-        # for vehicle in vehicle_list:
-        #     self.load_vehicle(vehicle)
         return True
 
     def startup_check(self):
@@ -147,8 +128,7 @@ class SpecificWorker(GenericWorker):
         pos = [x, y, z]
         rx, ry, rz = edge_rt.attrs['rt_rotation_euler_xyz'].value
         rot = [rx, ry, rz]
-        ego = VehicleType(robot.id, pos, rot)
-        print(ego.pos)
+        ego = VehicleType(robot.id, None, "ego", pos, rot)
         #self.create_ghost_node(robot, ego)
         vehicles_list.append(ego)
          # Comprobar cual hay que almacenar y cual no
@@ -159,57 +139,32 @@ class SpecificWorker(GenericWorker):
             pos = [float(x), float(y), float(z)]
             rx, ry, rz = edge_rt.attrs['rt_rotation_euler_xyz'].value
             rot = [float(rx), float(ry), float(rx)]
-            vehicle = VehicleType(vehicle_node.id, pos, rot) #Comprobar cual hay que almacenar y cual no
-            #self.create_ghost_node(vehicle_node, vehicle)
+            vehicle = VehicleType(vehicle_node.id, None, "actor", pos, rot) #Comprobar cual hay que almacenar y cual no
             vehicles_list.append(vehicle)
         return vehicles_list
 
-    def create_or_update_virtual_RT_edges(self, vehicle_type):
-        print(vehicle_type.id, vehicle_type.pos)
-        node = self.g.get_node(vehicle_type.id)
-        print(node.name)
+    def update_virtual_rt_edges(self, vehicle_type):
+        node = self.g.get_node(vehicle_type.node_id)
         virtual_edge = self.g.get_edge("world", node.name, "virtual_RT")
-        print(virtual_edge)
         if virtual_edge is None:
             world = self.g.get_node("world")
             virtual_RT = Edge(node.id, world.id, "virtual_RT", self.agent_id)
-            print(Attribute(vehicle_type.pos, self.agent_id))
             virtual_RT.attrs["rt_translation"] = Attribute(vehicle_type.pos, self.agent_id)
             virtual_RT.attrs["rt_rotation_euler_xyz"] = Attribute(vehicle_type.rot, self.agent_id)
             self.g.insert_or_assign_edge(virtual_RT)
         else:
-            virtual_edge.attrs["rt_translation"] = Attribute(vehicle_type.pos, self.agent_id)
-            virtual_edge.attrs["rt_rotation_euler_xyz"] = Attribute(vehicle_type.rot, self.agent_id)
+            vehicle = self.simulator.world.get_actor(vehicle_type.carla_id)
+            transform = vehicle.get_transform()
+            pos = [transform.location.x, transform.location.y, transform.location.z]
+            rot = [transform.rotation.pitch, transform.rotation.yaw, transform.rotation.roll]
+            virtual_edge.attrs["rt_translation"] = Attribute(pos, self.agent_id)
+            virtual_edge.attrs["rt_rotation_euler_xyz"] = Attribute(rot, self.agent_id)
             self.g.insert_or_assign_edge(virtual_edge)
 
-    def delete_virtual_RT_edge:
-        edges = self.g.get_edge
-
-    def create_ghost_node(self, vehicle_node, vehicle_type):
-        node_name = vehicle_node.name + '_ghost'
-        new_node = Node(agent_id=self.agent_id, type=vehicle_node.type, name=node_name)
-        new_node.attrs['pos_x'] = Attribute(vehicle_node.attrs['pos_x'].value+25, self.agent_id)
-        new_node.attrs['pos_y'] = Attribute(vehicle_node.attrs['pos_y'].value+25, self.agent_id)
-        try:
-            self.g.insert_node(new_node)
-            self.ghost_nodes.append(new_node)
-            console.print('Ghost node created -- ', new_node.id, style='red')
-            has_edge = Edge(new_node.id, vehicle_node.id, 'has', self.agent_id)
-            self.g.insert_or_assign_edge(has_edge)
-            self.rt_api.insert_or_assign_edge_RT(self.g.get_node('world'), new_node.id, vehicle_type.pos, vehicle_type.rot)
-            print(' inserted new node  ', vehicle_type.id)
-
-        except:
-            traceback.print_exc()
-            print('cant insert node or add edge RT')
-
-    def delete_ghost_node(self,):
-        for node in self.ghost_nodes:
-            for edge in node.edges:
-                self.g.delete_edge(edge.origin, edge.destination, edge.type)
-            self.g.delete_node(node.id)
-        self.ghost_nodes = []
-
+    def delete_virtual_rt_edge(self):
+        edges = self.g.get_edges_by_type("virtual_RT")
+        for edge in edges:
+            self.g.delete_edge(edge.origin, edge.destination, edge.type)
     # def update_RT_edge(self):
 
 

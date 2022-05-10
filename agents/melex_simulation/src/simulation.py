@@ -14,29 +14,32 @@ console = Console(highlight=False)
 
 
 class VehicleType:
-    def __init__(self, node_id=None, pos=[0.0, 0.0, 0.0], rot=[0.0, 0.0, 0.0]):
+    def __init__(self, node_id=None, carla_id=None, rol="actor", pos=[0.0, 0.0, 0.0], rot=[0.0, 0.0, 0.0]):
         self.node_id = node_id
+        self.carla_id = carla_id
+        self.rol = rol
         self.pos = pos
         self.rot = rot
 
 
 class Simulation:
-    def __init__(self, map='Town01'):
+    def __init__(self, map='Town02'):
         self.client = None
         self.world = None
         self._blueprint_library = None
-        self.ego_vehicle = None
-        self.vehicles = []
+        self.carla_vehicles = []
         self.collision = []
         self.INPUT_WIDTH = 424
         self.INPUT_HEIGHT = 240
         self.car_rgb_cams = {}
         self._server_clock = pygame.time.Clock()
         self.create_client() #Inicializamos conexión con Carla
-        self.client.set_timeout(2.0)
+
         self.initialize_world(map) #Cargamos Mapa (En este caso Town01, hay que cambiar por el nuestro)
-        self.tm = self.client.get_trafficmanager(self.port)
-        self.tm_port = self.tm.get_port()
+        self.tm = self.client.get_trafficmanager(8000)
+        self.client.set_timeout(2.0)
+        #self.tm.set_synchronous_mode(True)
+        #self.tm_port = self.tm.get_port()
         # self.world.wait_for_tick()
 
     def create_client(self, host=None, port=None):
@@ -77,30 +80,26 @@ class Simulation:
             console.log("No carla client created. Call create_client first.", style="red")
 
     def load_vehicles(self, vehicle_list):
-        ego, *vehicles = vehicle_list
-        ego_bp = self._blueprint_library.find('vehicle.tesla.model3') #Nuestro vehiculo
-        ego_bp.set_attribute('role_name', 'ego')
-        try:
-            spawn_point = carla.Transform(carla.Location(x=ego.pos[0], y=ego.pos[1], z=ego.pos[2] + 2),
-                                          carla.Rotation(ego.rot[0], ego.rot[1],
-                                                         ego.rot[2]))  # Comprobar angulos CARLA-ROBOCOMP
-        except:
-            spawn_points = self.world.get_map().get_spawn_points()
-            spawn_point = random.choice(spawn_points) if spawn_points else carla.Transform()
-            print("Error to loaded vehicle")
-        self.vehicles.append(self.world.try_spawn_actor(ego_bp, spawn_point))
-        self.set_ego_sensors(self.vehicles[0], 3)
-        for vehicle in vehicles:
-            choices = self.world.get_blueprint_library().filter('vehicle.*')
-            vehicle_blueprint = random.choice(choices)
+        for vehicle in vehicle_list:
+            if vehicle.rol == "ego":
+                bp = self._blueprint_library.find('vehicle.tesla.model3') #Nuestro vehiculo
+                bp.set_attribute('role_name', 'ego')
+            else:
+                bp = random.choice(self.world.get_blueprint_library().filter('vehicle.*'))
+
             try:
-                spawn_point = carla.Transform(carla.Location(x=vehicle.pos[0], y=vehicle.pos[1], z=vehicle.pos[2] + 2), carla.Rotation(vehicle.rot[0], vehicle.rot[1], vehicle.rot[2])) #Comprobar angulos CARLA-ROBOCOMP
-                self.vehicles.append(self.world.try_spawn_actor(vehicle_blueprint, spawn_point))
+                spawn_point = carla.Transform(carla.Location(x=bp.pos[0], y=bp.pos[1], z=bp.pos[2] + 2),
+                                              carla.Rotation(bp.rot[0], bp.rot[1],
+                                                             bp.rot[2]))  # Comprobar angulos CARLA-ROBOCOMP
             except:
                 spawn_points = self.world.get_map().get_spawn_points()
                 spawn_point = random.choice(spawn_points) if spawn_points else carla.Transform()
                 print("Error to loaded vehicle")
-            self.vehicles.append(self.world.try_spawn_actor(vehicle_blueprint, spawn_point))
+            self.carla_vehicles.append(self.world.try_spawn_actor(bp, spawn_point))
+            print(self.carla_vehicles[-1])
+            vehicle.carla_id = self.carla_vehicles[-1].id
+        self.set_ego_sensors(self.carla_vehicles[0], 3)
+
 
     def set_ego_sensors(self, ego_vehicle, num_cams):
         cam_bp = self._blueprint_library.find('sensor.camera.rgb')
@@ -115,7 +114,7 @@ class Simulation:
                 center_cam_location = carla.Location(dimensiones_car.x + 0.02, 0, dimensiones_car.z + 1)
                 center_cam_rotation = carla.Rotation(0, 0, 0)
                 cam_transform = carla.Transform(center_cam_location, center_cam_rotation)
-                self.center_cam = self.world.spawn_actor(cam_bp, cam_transform, attach_to=self.ego_vehicle,
+                self.center_cam = self.world.spawn_actor(cam_bp, cam_transform, attach_to=ego_vehicle,
                                                          attachment_type=carla.AttachmentType.Rigid)
                 self.center_cam.listen(lambda image: self.sensor_rgb_callback(image, "CenterCam"))
             elif i == 1:
@@ -123,7 +122,7 @@ class Simulation:
                 left_cam_rotation = carla.Rotation(0, -60, 0)
                 # left_cam_rotation = carla.Rotation(0, 180+math.degrees(-0.244346), math.degrees(-np.pi/3))
                 left_cam_transform = carla.Transform(left_cam_location, left_cam_rotation)
-                self.left_cam = self.world.spawn_actor(cam_bp, left_cam_transform, attach_to=self.ego_vehicle,
+                self.left_cam = self.world.spawn_actor(cam_bp, left_cam_transform, attach_to=ego_vehicle,
                                                        attachment_type=carla.AttachmentType.Rigid)
                 self.left_cam.listen(lambda image: self.sensor_rgb_callback(image, "LeftCam"))
             elif i == 2:
@@ -132,12 +131,12 @@ class Simulation:
                 # left_cam_rotation = carla.Rotation(0, 180+math.degrees(-0.244346), math.degrees(-np.pi/3))
                 right_cam_transform = carla.Transform(right_cam_location, right_cam_rotation)
 
-                self.right_cam = self.world.spawn_actor(cam_bp, right_cam_transform, attach_to=self.ego_vehicle,
+                self.right_cam = self.world.spawn_actor(cam_bp, right_cam_transform, attach_to=ego_vehicle,
                                                         attachment_type=carla.AttachmentType.Rigid)
 
                 self.right_cam.listen(lambda image: self.sensor_rgb_callback(image, "RightCam"))
         collision_bp = self._blueprint_library.find('sensor.other.collision')
-        self.collision_sensor = self.world.spawn_actor(collision_bp, cam_transform, attach_to=self.ego_vehicle, attachment_type=carla.AttachmentType.Rigid)
+        self.collision_sensor = self.world.spawn_actor(collision_bp, cam_transform, attach_to=ego_vehicle, attachment_type=carla.AttachmentType.Rigid)
         self.collision_sensor.listen(lambda collision: self.collision_callback(collision))
 
     # Compute np array for rgb sensors
@@ -158,7 +157,7 @@ class Simulation:
 
     def collision_callback(self, collision):
         print("Collision with", collision.other_actor.type_id)
-        self.collision.append(collision)
+        self.collision.append(collision.other_actor)
     # Dudas de que hace
     # def on_world_tick(self):
     #     self._server_clock.tick()
