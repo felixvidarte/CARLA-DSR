@@ -1,4 +1,4 @@
-import pygame
+# import pygame
 import carla
 import cv2
 import numpy as np
@@ -13,7 +13,7 @@ from rich.console import Console
 console = Console(highlight=False)
 
 
-class VehicleType:
+class ActorType:
     def __init__(self, node_id=None, carla_id=None, rol="actor", pos=[0.0, 0.0, 0.0], rot=[0.0, 0.0, 0.0]):
         self.node_id = node_id
         self.carla_id = carla_id
@@ -23,21 +23,23 @@ class VehicleType:
 
 
 class Simulation:
-    def __init__(self, map='Town02'):
+    def __init__(self, map='Town01'):
         self.client = None
         self.world = None
         self._blueprint_library = None
-        self.carla_vehicles = []
-        self.collision = []
+        self.carla_actors = []
+        self.collisions = []
         self.INPUT_WIDTH = 424
         self.INPUT_HEIGHT = 240
         self.car_rgb_cams = {}
-        self._server_clock = pygame.time.Clock()
+        # self._server_clock = pygame.time.Clock()
         self.create_client() #Inicializamos conexión con Carla
-
+        # pygame.init()
         self.initialize_world(map) #Cargamos Mapa (En este caso Town01, hay que cambiar por el nuestro)
-        self.tm = self.client.get_trafficmanager(8000)
-        self.client.set_timeout(2.0)
+
+        # self.tm = self.client.get_trafficmanager()
+
+        #self.tm = self.client.get_trafficmanager()
         #self.tm.set_synchronous_mode(True)
         #self.tm_port = self.tm.get_port()
         # self.world.wait_for_tick()
@@ -69,36 +71,37 @@ class Simulation:
             self.world = self.client.load_world(map_name)
             settings = self.world.get_settings()
             settings.synchronous_mode = True
+            settings.fixed_delta_seconds = 0.05
             self.world.apply_settings(settings)
-            print('Done')
-            # settings = self.world.get_settings()
-            # settings.synchronous_mode = True
-            # self.world.apply_settings(settings)
             print(f'Loading world took {time.time() - init_time:2.2f} seconds')
             self._blueprint_library = self.world.get_blueprint_library()
         else:
             console.log("No carla client created. Call create_client first.", style="red")
 
-    def load_vehicles(self, vehicle_list):
-        for vehicle in vehicle_list:
-            if vehicle.rol == "ego":
+    def load_actors(self, actors):
+        for actor in actors:
+            print(actor.rol)
+            if actor.rol == "ego_vehicle":
                 bp = self._blueprint_library.find('vehicle.tesla.model3') #Nuestro vehiculo
                 bp.set_attribute('role_name', 'ego')
-            else:
+            elif actor.rol == "vehicle":
                 bp = random.choice(self.world.get_blueprint_library().filter('vehicle.*'))
-
+            elif actor.rol == "people":
+                bp = random.choice(self.world.get_blueprint_library().filter('pederstian.*'))
+            else:
+                print("Unknown actor")
             try:
-                spawn_point = carla.Transform(carla.Location(x=bp.pos[0], y=bp.pos[1], z=bp.pos[2] + 2),
-                                              carla.Rotation(bp.rot[0], bp.rot[1],
-                                                             bp.rot[2]))  # Comprobar angulos CARLA-ROBOCOMP
+                spawn_point = carla.Transform(carla.Location(x=actor.pos[0], y=actor.pos[1], z=actor.pos[2] + 2),
+                                              carla.Rotation(actor.rot[0], actor.rot[1], actor.rot[2]))  # Comprobar angulos CARLA-ROBOCOMP
+                print(spawn_point)
             except:
                 spawn_points = self.world.get_map().get_spawn_points()
                 spawn_point = random.choice(spawn_points) if spawn_points else carla.Transform()
-                print("Error to loaded vehicle")
-            self.carla_vehicles.append(self.world.try_spawn_actor(bp, spawn_point))
-            print(self.carla_vehicles[-1])
-            vehicle.carla_id = self.carla_vehicles[-1].id
-        self.set_ego_sensors(self.carla_vehicles[0], 3)
+                # print("Error to loaded vehicle")
+            self.carla_actors.append(self.world.try_spawn_actor(bp, spawn_point))
+            print(self.carla_actors)
+            actor.carla_id = self.carla_actors[-1].id
+        self.set_ego_sensors(self.carla_actors[0], 3)
 
 
     def set_ego_sensors(self, ego_vehicle, num_cams):
@@ -157,7 +160,7 @@ class Simulation:
 
     def collision_callback(self, collision):
         print("Collision with", collision.other_actor.type_id)
-        self.collision.append(collision.other_actor)
+        self.collisions.append(collision.other_actor)
     # Dudas de que hace
     # def on_world_tick(self):
     #     self._server_clock.tick()

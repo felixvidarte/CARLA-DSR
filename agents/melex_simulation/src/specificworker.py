@@ -53,8 +53,8 @@ class SpecificWorker(GenericWorker):
         self.simulator = None
         self.is_simulation = True
         self.loaded = False
-        self.vehicle_list = []
-        self.ghost_nodes = []
+        self.robot = None
+        self.actor_list = []
 
         # try:
         #     signals.connect(self.g, signals.UPDATE_NODE_ATTR, self.update_node_att)
@@ -82,30 +82,32 @@ class SpecificWorker(GenericWorker):
 
     @QtCore.Slot()
     def compute(self):
-        robot = self.g.get_node('robot')
-        if robot:
+        self.robot = self.g.get_node('robot')
+        if self.robot:
             # self.is_simulation = robot.attrs['simulation'].value
             if self.is_simulation and (not self.loaded):
                 self.simulator = Simulation()
-                self.vehicle_list = self.get_vehicles_from_dsr()
-                self.simulator.load_vehicles(self.vehicle_list)
+                self.actor_list = self.get_actor_from_dsr()
+                self.simulator.load_actors(self.actor_list)
                 self.loaded = True
-                for v in self.simulator.carla_vehicles:
-                    v.set_autopilot(True, self.simulator.tm_port)
+                # for v in self.simulator.carla_vehicles:
+                #     v.set_autopilot(True, self.simulator.tm_port)
                 danger_car = self.simulator.carla_vehicles[1]
-                self.simulator.tm.ignore_lights_percentage(danger_car, 100)
-                self.simulator.tm.distance_to_leading_vehicle(danger_car, 0)
-                self.simulator.tm.vehicle_percentage_speed_difference(danger_car, -20)
+                # self.simulator.tm.ignore_lights_percentage(danger_car, 100)
+                # self.simulator.tm.distance_to_leading_vehicle(danger_car, 0)
+                # self.simulator.tm.vehicle_percentage_speed_difference(danger_car, -20)
             while self.is_simulation:
                 self.simulator.world.tick()
-                self.simulator.carla_vehicles[0].apply_control(carla.VehicleControl(throttle=0.3))
-                for vehicle in self.vehicle_list:
-                    self.update_virtual_rt_edges(vehicle)
+                self.simulator.carla_actors[0].apply_control(carla.VehicleControl(brake=0.7))
+                self.create_virtual_brake_edge()
+                for actor in self.actor_list:
+                    print(self.actor_list)
+                    self.update_virtual_rt_edges(actor)
+
                 self.simulator.mosaic()
                 print('IMAGEN')
 
             self.delete_virtual_rt_edge()
-            self.delete_ghost_node()
 
         return True
 
@@ -119,18 +121,17 @@ class SpecificWorker(GenericWorker):
     #
     # SUBSCRIPTION to newPeopleData method from HumanToDSRPub interface
     #
-    def get_vehicles_from_dsr(self):
+    def get_actor_from_dsr(self):
         # Read and store people from dsr
-        vehicles_list = []
-        robot = self.g.get_node('robot')
-        edge_rt = self.rt_api.get_edge_RT(self.g.get_node('world'), robot.id)
+        actor_list = []
+        edge_rt = self.rt_api.get_edge_RT(self.g.get_node('world'), self.robot.id)
         x, y, z = edge_rt.attrs['rt_translation'].value
         pos = [x, y, z]
         rx, ry, rz = edge_rt.attrs['rt_rotation_euler_xyz'].value
         rot = [rx, ry, rz]
-        ego = VehicleType(robot.id, None, "ego", pos, rot)
+        ego = ActorType(self.robot.id, None, "ego_vehicle", pos, rot)
         #self.create_ghost_node(robot, ego)
-        vehicles_list.append(ego)
+        actor_list.append(ego)
          # Comprobar cual hay que almacenar y cual no
         vehicles_nodes = self.g.get_nodes_by_type('vehicle')
         for vehicle_node in vehicles_nodes:
@@ -139,22 +140,31 @@ class SpecificWorker(GenericWorker):
             pos = [float(x), float(y), float(z)]
             rx, ry, rz = edge_rt.attrs['rt_rotation_euler_xyz'].value
             rot = [float(rx), float(ry), float(rx)]
-            vehicle = VehicleType(vehicle_node.id, None, "actor", pos, rot) #Comprobar cual hay que almacenar y cual no
-            vehicles_list.append(vehicle)
-        return vehicles_list
+            vehicle = ActorType(vehicle_node.id, None, "vehicle", pos, rot) #Comprobar cual hay que almacenar y cual no
+            actor_list.append(vehicle)
+        people_nodes = self.g.get_nodes_by_type('person')
+        for person_node in people_nodes:
+            edge_rt = self.rt_api.get_edge_RT(self.g.get_node("world"), person_node.id)
+            x, y, z = edge_rt.attrs['rt_translation'].value
+            pos = [float(x), float(y), float(z)]
+            rx, ry, rz = edge_rt.attrs['rt_rotation_euler_xyz'].value
+            rot = [float(rx), float(ry), float(rx)]
+            person = ActorType(person_node.id, None, "people", pos, rot)  # Comprobar cual hay que almacenar y cual no
+            actor_list.append(person)
+        return actor_list
 
-    def update_virtual_rt_edges(self, vehicle_type):
-        node = self.g.get_node(vehicle_type.node_id)
+    def update_virtual_rt_edges(self, actor):
+        node = self.g.get_node(actor.node_id)
         virtual_edge = self.g.get_edge("world", node.name, "virtual_RT")
         if virtual_edge is None:
             world = self.g.get_node("world")
             virtual_RT = Edge(node.id, world.id, "virtual_RT", self.agent_id)
-            virtual_RT.attrs["rt_translation"] = Attribute(vehicle_type.pos, self.agent_id)
-            virtual_RT.attrs["rt_rotation_euler_xyz"] = Attribute(vehicle_type.rot, self.agent_id)
+            virtual_RT.attrs["rt_translation"] = Attribute(actor.pos, self.agent_id)
+            virtual_RT.attrs["rt_rotation_euler_xyz"] = Attribute(actor.rot, self.agent_id)
             self.g.insert_or_assign_edge(virtual_RT)
         else:
-            vehicle = self.simulator.world.get_actor(vehicle_type.carla_id)
-            transform = vehicle.get_transform()
+            actor = self.simulator.world.get_actor(actor.carla_id)
+            transform = actor.get_transform()
             pos = [transform.location.x, transform.location.y, transform.location.z]
             rot = [transform.rotation.pitch, transform.rotation.yaw, transform.rotation.roll]
             virtual_edge.attrs["rt_translation"] = Attribute(pos, self.agent_id)
@@ -165,9 +175,24 @@ class SpecificWorker(GenericWorker):
         edges = self.g.get_edges_by_type("virtual_RT")
         for edge in edges:
             self.g.delete_edge(edge.origin, edge.destination, edge.type)
-    # def update_RT_edge(self):
 
+    def create_virtual_brake_edge(self):
+        virtual_brake = self.g.get_edge(self.robot.id, self.robot.id, 'virtual_brake')
+        ego_control = self.simulator.carla_actors[0].get_control()
+        if virtual_brake is None:
+            print(ego_control.brake)
+            if ego_control.brake > 0.5:
+                time_break = time.time()
+                brake = Edge(self.robot.id, self.robot.id, 'virtual_brake', self.agent_id)
+                self.g.insert_or_assign_edge(brake)
 
+    def create_virtual_collision_edge(self, collisions):
+        for collision in collisions:
+            for actor in self.actor_list:
+                if actor.carla_id == collision.other_actor.id:
+                    if self.g.get_edge(actor.id, self.robot.id, "virtual_collision") is None:
+                        collision_edge = Edge(self.robot.id, actor.id, "virtual_collision")
+                        self.g.insert_or_assign_edge(collision_edge)
     # ===================================================================
     # ===================================================================
 
