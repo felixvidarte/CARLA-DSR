@@ -1,0 +1,11 @@
+import "Carla.idsl";
+
+Component carla_simulation
+{
+    Communications
+    {
+        implements Carla;
+    };
+    language python;
+};
+

@@ -1,0 +1,12 @@
+import "Carla.idsl";
+
+Component monitor_simulation
+{
+    Communications
+    {
+        requires Carla;
+    };
+    language python;
+    options dsr;
+};
+

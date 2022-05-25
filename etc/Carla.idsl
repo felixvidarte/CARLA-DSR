@@ -1,0 +1,50 @@
+module RoboCompCarla
+{
+    struct Posedata
+    {
+        float tx;
+        float ty;
+        float tz;
+        float rx;
+        float ry;
+        float rz;
+    };
+    sequence<Posedata> Fullposedata;   
+    struct Actor
+    {
+        int id;
+        int carlaid;
+        Fullposedata pose;
+        string rol;
+    };
+    sequence<Actor> Actors;
+    struct Simdata
+    {
+        float duration;
+        Actors actorlist;
+    };
+    struct Simulations
+    {
+    	int nsimulation;
+    	Simdata simulations;
+    };    
+    struct Simresult
+    {
+    	bool collision;
+    	bool isbreak;
+    	Actors actorlist;
+    };
+    sequence<Simresult> Fullresults;    
+    struct Results
+    {
+    	bool valid;
+    	int nsimulation;
+    	float time;
+    	Fullresults fullresult;
+    };	
+    interface Carla
+    {
+        void setSimulationParam(Simulations condini);
+        Results getState();
+    };
+};
