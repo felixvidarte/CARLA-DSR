@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 import time
 import random
+import csv
 
 from threading import Lock
 
@@ -29,6 +30,7 @@ class Simulation:
         self._blueprint_library = None
         self.carla_actors = []
         self.collisions = []
+        # self.spawn_points = []
         self.INPUT_WIDTH = 424
         self.INPUT_HEIGHT = 240
         self.car_rgb_cams = {}
@@ -36,12 +38,17 @@ class Simulation:
         self.create_client() #Inicializamos conexión con Carla
         # pygame.init()
         self.initialize_world(map) #Cargamos Mapa (En este caso Town01, hay que cambiar por el nuestro)
-
+        # text_file = open("./etc/CampusV16.xodr", "r")
+        # self.map = carla.Map("CampusV16", text_file.read())
+        # self.load_spawn_points()
+        print(self.world)
+        self.spawn_points = self.world.get_map().get_spawn_points()
+        print("ANTES")
+        self.tm = self.client.get_trafficmanager(8000)
+        print("DESPUES")
         # self.tm = self.client.get_trafficmanager()
-
-        #self.tm = self.client.get_trafficmanager()
-        #self.tm.set_synchronous_mode(True)
-        #self.tm_port = self.tm.get_port()
+        # self.tm.set_synchronous_mode(True)
+        # self.tm_port = self.tm.get_port()
         # self.world.wait_for_tick()
 
     def create_client(self, host=None, port=None):
@@ -66,17 +73,25 @@ class Simulation:
     def initialize_world(self, map_name):
         if self.client:
             self.client.set_timeout(10.0)
-            init_time = time.time()
+            self.init_time = time.time()
             print('Loading world...')
-            self.world = self.client.load_world(map_name)
+            self.client.load_world(map_name)
+            self.world = self.client.get_world()
             settings = self.world.get_settings()
             settings.synchronous_mode = True
             settings.fixed_delta_seconds = 0.05
             self.world.apply_settings(settings)
-            print(f'Loading world took {time.time() - init_time:2.2f} seconds')
+            print(f'Loading world took {time.time() - self.init_time:2.2f} seconds')
             self._blueprint_library = self.world.get_blueprint_library()
         else:
             console.log("No carla client created. Call create_client first.", style="red")
+
+    def load_spawn_points(self):
+        file = open('etc/spawn_points.csv')
+        csvreader = csv.reader(file)
+        for row in csvreader:
+            self.spawn_points.append(carla.Transform(carla.Location(float(row[0]), float(row[1]), float(row[2])), carla.Rotation(float(row[3]), float(row[4]), float(row[5]))))
+        file.close()
 
     def load_actors(self, actors):
         for actor in actors:
@@ -91,14 +106,14 @@ class Simulation:
             else:
                 print("Unknown actor")
             try:
-                spawn_point = carla.Transform(carla.Location(x=actor.pos[0], y=actor.pos[1], z=actor.pos[2] + 2),
+                self.spawn_point = carla.Transform(carla.Location(x=actor.pos[0], y=actor.pos[1], z=actor.pos[2] + 385),
                                               carla.Rotation(actor.rot[0], actor.rot[1], actor.rot[2]))  # Comprobar angulos CARLA-ROBOCOMP
-                print(spawn_point)
             except:
-                spawn_points = self.world.get_map().get_spawn_points()
-                spawn_point = random.choice(spawn_points) if spawn_points else carla.Transform()
+                self.spawn_point = random.choice(self.spawn_points) if self.spawn_points else carla.Transform()
+                # spawn_point = self.world.get_random_location_from_navigation()
                 # print("Error to loaded vehicle")
-            self.carla_actors.append(self.world.try_spawn_actor(bp, spawn_point))
+            # self.world.spawn_actor(bp, spawn_point)
+            self.carla_actors.append(self.world.spawn_actor(bp, self.spawn_point))
             print(self.carla_actors)
             actor.carla_id = self.carla_actors[-1].id
         self.set_ego_sensors(self.carla_actors[0], 3)

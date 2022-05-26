@@ -57,7 +57,9 @@ class SpecificWorker(GenericWorker):
         self.carla_actors = []
         self.collisions = []
         self.results = ifaces.RoboCompCarla.Results()
-        self.result.valid = False
+        self.results.valid = False
+        self.collision = False
+        self.is_brake = False
         # self.spawn_points = []
         self.INPUT_WIDTH = 424
         self.INPUT_HEIGHT = 240
@@ -125,21 +127,34 @@ class SpecificWorker(GenericWorker):
         if self.simulation is not None:
             sim = self.simulation.simulations
             actor_list_result = sim.actorlist
-            actor_list_result.pose = ifaces.Fullposedata()
             n_simulations = self.simulation.nsimulation
             full_results = ifaces.Fullresults()
             duration = sim.duration
+            self.load_actors(sim.actorlist)
             for _ in range(1, n_simulations):
-                self.load_actors(sim.actorlist)
+                self.reload_actor(sim.actorlist)
+                result = ifaces.RoboCompCarla.Simresult()
                 steep = 0
                 while steep < duration:
-                    i=1
+                    i = 1
                     self.simulator.world.tick()
+                    if self.carla_actors[0].get_control().brake > 0.5:
+                        self.is_brake = True
                     if steep == i * self.revision_time:
                         self.add_actor_pose(actor_list_result)
                         i += 1
                     steep += 1
                     self.mosaic()
+                result.colision = self.collision
+                result.isbrake = self.is_brake
+                result.actorlist = actor_list_result
+                full_results.append(result)
+                self.collision = False
+                self.is_brake = False
+            self.destroy_actor()
+
+
+
                         # time_simulation =
         # computeCODE
         # try:
@@ -174,7 +189,7 @@ class SpecificWorker(GenericWorker):
                 print("Unknown actor")
             try:
                 self.spawn_point = carla.Transform(carla.Location(x=actor.pose[0].tx/1000, y=actor.pose[0].ty/1000, z=actor.pose[0].tz/1000 + 385),
-                                              carla.Rotation(actor.pose[0].rx, actor.pose[0].ry, actor.pose[0].rz))  # Comprobar angulos CARLA-ROBOCOMP
+                                              carla.Rotation(actor.pose[0].ry, actor.pose[0].rz, actor.pose[0].rx))  # Comprobar angulos CARLA-ROBOCOMP
             except:
                 self.spawn_point = random.choice(self.spawn_points) if self.spawn_points else carla.Transform()
                 # spawn_point = self.world.get_random_location_from_navigation()
@@ -183,7 +198,14 @@ class SpecificWorker(GenericWorker):
             self.carla_actors.append(self.world.spawn_actor(bp, self.spawn_point))
             print(self.carla_actors)
             actor.carla_id = self.carla_actors[-1].id
+            actor.pose = ifaces.Fullposedata()
         self.set_ego_sensors(self.carla_actors[0], 3)
+
+    def reload_actor(self, actor_list):
+        for actor in actor_list:
+            new_actor = self.world.get_actor(actor.carlaid)
+            new_actor.set_transform(carla.Transform(carla.Location(x=actor.pose[0].tx/1000, y=actor.pose[0].ty/1000, z=actor.pose[0].tz/1000 + 385), carla.Rotation(actor.pose[0].ry, actor.pose[0].rz, actor.pose[0].rx)))
+
 
     def set_ego_sensors(self, ego_vehicle, num_cams):
         cam_bp = self._blueprint_library.find('sensor.camera.rgb')
@@ -230,8 +252,25 @@ class SpecificWorker(GenericWorker):
         cv2.waitKey(1)
 
     def add_actor_pose(self, actor_list_result):
-        for carla_actor in self.carla_actors:
+        for actor in actor_list_result:
+            actor_pose = self.world.get_actor(actor.carlaid).get_transform()
+            pose = ifaces.RoboCompCarla.Posedata()
+            pose.tx = actor_pose.location.x
+            pose.ty = actor_pose.location.y
+            pose.tz = actor_pose.location.z
+            pose.rx = actor_pose.rotation.roll
+            pose.ry = actor_pose.rotation.pitch
+            pose.rz = actor_pose.rotation.yaw
+            actor.pose.append(pose)
 
+    def collision_callback(self, collision):
+        print("Collision with", collision.other_actor.type_id)
+        self.collision = True
+        self.collisions.append(collision.other_actor)
+
+    def destroy_actor(self):
+        self.carla_actors = []
+        
     # =============== Methods for Component Implements ==================
     # ===================================================================
 

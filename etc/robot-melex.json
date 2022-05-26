@@ -51,7 +51,7 @@
                                 "value": [
                                     0,
                                     0,
-                                    -6.283181190490723
+                                    0
                                 ]
                             },
                             "rt_translation": {
@@ -66,7 +66,7 @@
                         "src": "1"
                     },
                     {
-                        "dst": "70671102090674196",
+                        "dst": "400",
                         "label": "RT",
                         "linkAttribute": {
                             "rt_rotation_euler_xyz": {
@@ -89,7 +89,7 @@
                         "src": "1"
                     },
                     {
-                        "dst": "70671149972848660",
+                        "dst": "401",
                         "label": "RT",
                         "linkAttribute": {
                             "rt_rotation_euler_xyz": {
@@ -103,8 +103,8 @@
                             "rt_translation": {
                                 "type": 3,
                                 "value": [
-                                    0,
-                                    0,
+                                    10000,
+                                    50000,
                                     0
                                 ]
                             }
@@ -1125,7 +1125,7 @@
                 "name": "odometry",
                 "type": "odometry"
             },
-            "70671102090674196": {
+            "400": {
                 "attribute": {
                     "color": {
                         "type": 0,
@@ -1148,13 +1148,13 @@
                         "value": -849.482788
                     }
                 },
-                "id": "70671102090674196",
+                "id": "400",
                 "links": [
                 ],
                 "name": "Vehicle1",
                 "type": "vehicle"
             },
-            "70671149972848660": {
+            "401": {
                 "attribute": {
                     "color": {
                         "type": 0,
@@ -1177,7 +1177,7 @@
                         "value": -647.078918
                     }
                 },
-                "id": "70671149972848660",
+                "id": "401",
                 "links": [
                 ],
                 "name": "Vehicle2",
