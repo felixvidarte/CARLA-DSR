@@ -86,7 +86,7 @@ class SpecificWorker(GenericWorker):
             self.actor_list = self.get_actor_from_dsr()
             # print (self.actor_list)
             cond_ini = ifaces.RoboCompCarla.Simdata(30.0, self.actor_list)
-            cond_env = ifaces.RoboCompCarla.Simulations(1, cond_ini)
+            cond_env = ifaces.RoboCompCarla.Simulations(5, cond_ini)
             if not self.process:
                 self.carla_proxy.setSimulationParam(cond_env)
                 self.process = True
@@ -94,7 +94,7 @@ class SpecificWorker(GenericWorker):
                 print("Processing simulation data")
             result = self.carla_proxy.getState()
             if result.valid:
-                self.process(result)
+                self.procesing(result)
             else:
                 print("Waiting for results")
 
@@ -126,7 +126,6 @@ class SpecificWorker(GenericWorker):
         edge_rt = self.rt_api.get_edge_RT(self.g.get_node('world'), self.robot.id)
         x, y, z = edge_rt.attrs['rt_translation'].value
         rx, ry, rz = edge_rt.attrs['rt_rotation_euler_xyz'].value
-        print(edge_rt)
         pose.tx = float(x)
         pose.ty = float(y)
         pose.tz = float(z)
@@ -185,6 +184,8 @@ class SpecificWorker(GenericWorker):
         return actor_list
 
     def procesing(self, results):
+        print(results)
+        pass
 
     ######################
     # From the Carlasim you can call this methods:
