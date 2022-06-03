@@ -26,6 +26,10 @@ import cv2
 import numpy as np
 import time
 import random
+import sys
+import copy
+from threading import Lock
+mutex = Lock()
 from rich.console import Console
 import interfaces as ifaces
 from genericworker import *
@@ -39,78 +43,72 @@ console = Console(highlight=False)
 # import librobocomp_osgviewer
 # import librobocomp_innermodel
 
+def carla_fun():
+    client = carla.Client("localhost", 2000)
+    client.set_timeout(10.0)
+    client.load_world("Arriba2")
+    world = client.get_world()
+    world.get_spectator().set_transform(carla.Transform(carla.Location(0, 0, 382)))
+    tm = client.get_trafficmanager(8000)
+
+    return [client, world, tm]
+
 
 class SpecificWorker(GenericWorker):
-    def __init__(self, proxy_map, startup_check=False):
+    def __init__(self, proxy_map, startup_check=True, param_carla=carla_fun()):
         super(SpecificWorker, self).__init__(proxy_map)
-        self.Period = 2000
+        self.Period = 100
         if startup_check:
             self.startup_check()
         else:
             self.timer.timeout.connect(self.compute)
             self.timer.start(self.Period)
 
-        self.client = None
         self.world = None
+        self.tm = None
         self._blueprint_library = None
-        self.simulation = None
+        self.cond_simulation = None
+        self.results = None
         self.carla_actors = []
         self.collisions = []
-        self.results = ifaces.RoboCompCarla.Results()
-        self.results.valid = False
         self.collision = False
         self.is_brake = False
-        # self.spawn_points = []
+        self.spawn_points = []
+        self.revision_time = 5
         self.INPUT_WIDTH = 424
         self.INPUT_HEIGHT = 240
         self.car_rgb_cams = {}
-        # self._server_clock = pygame.time.Clock()
-        self.create_client()  # Inicializamos conexión con Carla
-        # pygame.init()
-        self.initialize_world('CampusV16')  # Cargamos Mapa (En este caso Town01, hay que cambiar por el nuestro)
-        # text_file = open("./etc/CampusV16.xodr", "r")
-        # self.map = carla.Map("CampusV16", text_file.read())
-        # self.load_spawn_points()
-        # self.spawn_points = self.world.get_map().get_spawn_points()
-        # self.tm = self.client.get_trafficmanager(8000)
-
-    def create_client(self, host=None, port=None):
-        if port is None:
-            self.port = 2000
-        else:
-            self.port = port
-        if host is None:
-            self.host = "localhost"
-        else:
-            self.host = host
-        if self.client is None:
-            try:
-                self.client = carla.Client(self.host, self.port)
-                return True
-            except RuntimeError:
-                console.log(f"Could not create Carla client on '{self.host}' and {self.port}", style="red")
-        else:
-            console.log(f"Carla client for {self.port} and {self.host} already exists")
-        return False
+        #self.create_client()  # Inicializamos conexión con Carla
+        self.client = param_carla[0]
+        # self.world = param_carla[1]
+        self.tm = param_carla[2]
+        self.tm.set_synchronous_mode(True)
+        self.tm.set_hybrid_physics_mode(True)
+        self.initialize_world(param_carla[1])  # Cargamos Mapa (En este caso Town01, hay que cambiar por el nuestro)
 
     def initialize_world(self, map_name):
         if self.client:
             self.client.set_timeout(10.0)
-            self.init_time = time.time()
+            init_time = time.time()
             print('Loading world...')
-            self.client.load_world(map_name)
-            self.world = self.client.get_world()
+            self.world = map_name
             settings = self.world.get_settings()
             settings.synchronous_mode = True
-            settings.fixed_delta_seconds = 0.05
+            settings.fixed_delta_seconds = 0.4
+            settings.substepping = True
+            settings.max_substep_delta_time = 0.01
+            settings.max_substeps = 10
             self.world.apply_settings(settings)
-            print(f'Loading world took {time.time() - self.init_time:2.2f} seconds')
+            print(f'Loading world took {time.time() - init_time:2.2f} seconds')
+            self.spawn_points = self.world.get_map().get_spawn_points()
             self._blueprint_library = self.world.get_blueprint_library()
         else:
             console.log("No carla client created. Call create_client first.", style="red")
 
     def __del__(self):
         """Destructor"""
+        for actor in self.world.get_actors():
+            actor.destroy
 
     def setParams(self, params):
         # try:
@@ -124,38 +122,50 @@ class SpecificWorker(GenericWorker):
     @QtCore.Slot()
     def compute(self):
         # print('SpecificWorker.compute...')
-        if self.simulation is not None:
-            sim = self.simulation.simulations
-            actor_list_result = sim.actorlist
-            n_simulations = self.simulation.nsimulation
-            full_results = ifaces.Fullresults()
+        if self.cond_simulation is not None:
+            time_ini = time.time()
+            self.results = ifaces.RoboCompCarla.Results()
+            self.results.fullresult = ifaces.Fullresults()
+            self.results.valid = False
+            sim = self.cond_simulation.simulations
+            actor_list_result = copy.copy(sim.actorlist)
+            n_simulations = self.cond_simulation.nsimulation
             duration = sim.duration
-            self.load_actors(sim.actorlist)
-            for _ in range(1, n_simulations):
-                self.reload_actor(sim.actorlist)
+            print(duration)
+            for _ in range(0, n_simulations):
+                # print(n_simulations)
+                self.load_actors(sim.actorlist)
                 result = ifaces.RoboCompCarla.Simresult()
-                steep = 0
-                while steep < duration:
-                    i = 1
-                    self.simulator.world.tick()
+                real_time = 0
+                i = 1
+                while real_time < duration:
+                    print(real_time)
+                    self.world.tick()
                     if self.carla_actors[0].get_control().brake > 0.5:
                         self.is_brake = True
-                    if steep == i * self.revision_time:
+                    if real_time > i * self.revision_time:
+                        print("Add new actor position in ", i * self.revision_time, " s" )
                         self.add_actor_pose(actor_list_result)
                         i += 1
-                    steep += 1
                     self.mosaic()
+                    real_time += self.world.get_settings().fixed_delta_seconds
                 result.colision = self.collision
                 result.isbrake = self.is_brake
                 result.actorlist = actor_list_result
-                full_results.append(result)
+                self.results.fullresult.append(result)
                 self.collision = False
                 self.is_brake = False
-            self.destroy_actor()
+                #self.reload_actor(sim.actorlist)
+                self.destroy_actor()
+            print("LLEGADO")
+            self.cond_simulation = None
+            self.results.time = time.time()-time_ini
+            self.results.valid = True
+        else:
+            print("Wait for simulation")
+            self.world.tick()
 
-
-
-                        # time_simulation =
+            # time_simulation =
         # computeCODE
         # try:
         #   self.differentialrobot_proxy.setSpeedBase(100, 0)
@@ -182,30 +192,35 @@ class SpecificWorker(GenericWorker):
                 bp = self._blueprint_library.find('vehicle.tesla.model3') #Nuestro vehiculo
                 bp.set_attribute('role_name', 'ego')
             elif actor.rol == "vehicle":
-                bp = random.choice(self.world.get_blueprint_library().filter('vehicle.*'))
+                bp = random.choice(self.world.get_blueprint_library().filter('walker'))
             elif actor.rol == "people":
-                bp = random.choice(self.world.get_blueprint_library().filter('pederstian.*'))
+                bp = random.choice(self.world.get_blueprint_library().filter('pedestrian.*'))
             else:
                 print("Unknown actor")
             try:
-                self.spawn_point = carla.Transform(carla.Location(x=actor.pose[0].tx/1000, y=actor.pose[0].ty/1000, z=actor.pose[0].tz/1000 + 385),
-                                              carla.Rotation(actor.pose[0].ry, actor.pose[0].rz, actor.pose[0].rx))  # Comprobar angulos CARLA-ROBOCOMP
+                self.spawn_point = random.choice(self.spawn_points) if self.spawn_points else carla.Transform()
+
+                #self.spawn_point = carla.Transform(carla.Location(x=actor.pose[0].tx/1000, y=actor.pose[0].ty/1000, z=actor.pose[0].tz/1000 + 365),
+                                              #carla.Rotation(actor.pose[0].ry, actor.pose[0].rz, actor.pose[0].rx))  # Comprobar angulos CARLA-ROBOCOMP
             except:
                 self.spawn_point = random.choice(self.spawn_points) if self.spawn_points else carla.Transform()
                 # spawn_point = self.world.get_random_location_from_navigation()
                 # print("Error to loaded vehicle")
             # self.world.spawn_actor(bp, spawn_point)
-            self.carla_actors.append(self.world.spawn_actor(bp, self.spawn_point))
+            print(self.spawn_point)
+            try:
+                self.carla_actors.append(self.world.spawn_actor(bp, self.spawn_point))
+            except Exception as e:
+                print(e)
             print(self.carla_actors)
-            actor.carla_id = self.carla_actors[-1].id
+            self.apply_control(self.carla_actors[-1], actor.rol)
+            self.carla_actors[-1].set_autopilot(True)
+            try:
+                actor.carlaid = self.carla_actors[-1].id
+            except Exception as e:
+                print("ERROR", e)
             actor.pose = ifaces.Fullposedata()
         self.set_ego_sensors(self.carla_actors[0], 3)
-
-    def reload_actor(self, actor_list):
-        for actor in actor_list:
-            new_actor = self.world.get_actor(actor.carlaid)
-            new_actor.set_transform(carla.Transform(carla.Location(x=actor.pose[0].tx/1000, y=actor.pose[0].ty/1000, z=actor.pose[0].tz/1000 + 385), carla.Rotation(actor.pose[0].ry, actor.pose[0].rz, actor.pose[0].rx)))
-
 
     def set_ego_sensors(self, ego_vehicle, num_cams):
         cam_bp = self._blueprint_library.find('sensor.camera.rgb')
@@ -220,36 +235,62 @@ class SpecificWorker(GenericWorker):
                 center_cam_location = carla.Location(dimensiones_car.x + 0.02, 0, dimensiones_car.z + 1)
                 center_cam_rotation = carla.Rotation(0, 0, 0)
                 cam_transform = carla.Transform(center_cam_location, center_cam_rotation)
-                self.center_cam = self.world.spawn_actor(cam_bp, cam_transform, attach_to=ego_vehicle,
+                center_cam = self.world.spawn_actor(cam_bp, cam_transform, attach_to=ego_vehicle,
                                                          attachment_type=carla.AttachmentType.Rigid)
-                self.center_cam.listen(lambda image: self.sensor_rgb_callback(image, "CenterCam"))
+                center_cam.listen(lambda image: self.sensor_rgb_callback(image, "CenterCam"))
             elif i == 1:
                 left_cam_location = carla.Location(dimensiones_car.x, -0.02, dimensiones_car.z + 1)
                 left_cam_rotation = carla.Rotation(0, -60, 0)
                 # left_cam_rotation = carla.Rotation(0, 180+math.degrees(-0.244346), math.degrees(-np.pi/3))
                 left_cam_transform = carla.Transform(left_cam_location, left_cam_rotation)
-                self.left_cam = self.world.spawn_actor(cam_bp, left_cam_transform, attach_to=ego_vehicle,
+                left_cam = self.world.spawn_actor(cam_bp, left_cam_transform, attach_to=ego_vehicle,
                                                        attachment_type=carla.AttachmentType.Rigid)
-                self.left_cam.listen(lambda image: self.sensor_rgb_callback(image, "LeftCam"))
+                left_cam.listen(lambda image: self.sensor_rgb_callback(image, "LeftCam"))
             elif i == 2:
                 right_cam_location = carla.Location(dimensiones_car.x, 0.02, dimensiones_car.z + 1)
                 right_cam_rotation = carla.Rotation(0, 60, 0)
                 # left_cam_rotation = carla.Rotation(0, 180+math.degrees(-0.244346), math.degrees(-np.pi/3))
                 right_cam_transform = carla.Transform(right_cam_location, right_cam_rotation)
 
-                self.right_cam = self.world.spawn_actor(cam_bp, right_cam_transform, attach_to=ego_vehicle,
+                right_cam = self.world.spawn_actor(cam_bp, right_cam_transform, attach_to=ego_vehicle,
                                                         attachment_type=carla.AttachmentType.Rigid)
 
-                self.right_cam.listen(lambda image: self.sensor_rgb_callback(image, "RightCam"))
+                right_cam.listen(lambda image: self.sensor_rgb_callback(image, "RightCam"))
         collision_bp = self._blueprint_library.find('sensor.other.collision')
-        self.collision_sensor = self.world.spawn_actor(collision_bp, cam_transform, attach_to=ego_vehicle, attachment_type=carla.AttachmentType.Rigid)
-        self.collision_sensor.listen(lambda collision: self.collision_callback(collision))
+        collision_sensor = self.world.spawn_actor(collision_bp, cam_transform, attach_to=ego_vehicle, attachment_type=carla.AttachmentType.Rigid)
+        collision_sensor.listen(lambda collision: self.collision_callback(collision))
+
+    def apply_control(self, actor, actor_rol):
+        if actor.rol == "ego_vehicle":
+            actor.set_autopilot(True)
+            self.tm.keep_right_rule_percentaje(actor)
+            self.tm.ignore_walkers_percentage(actor,100)
+            self.ignore_vehicles_porcentage(actor, 100)
+        elif actor.rol == "vehicle":
+            actor.set_autopilot(True)
+            self.tm.ignore_signs_percentage(actor, random.random(0,100))
+            self.tm.vehicle_percentage_speed_difference(actor,random.random(0,100))
+            self.ignore_vehicles_porcentage(actor,100)
+        elif actor.rol == "people":
+            pass
 
     def mosaic(self):
-        v_f = cv2.hconcat([self.car_rgb_cams["LeftCam"], self.car_rgb_cams["CenterCam"]])
-        v_f = cv2.hconcat([v_f, self.car_rgb_cams["RightCam"]])
-        cv2.imshow("FrontCam", v_f)
-        cv2.waitKey(1)
+        if len(self.car_rgb_cams.keys()) == 3:
+            v_f = cv2.hconcat([self.car_rgb_cams["LeftCam"], self.car_rgb_cams["CenterCam"]])
+            v_f = cv2.hconcat([v_f, self.car_rgb_cams["RightCam"]])
+            cv2.imshow("FrontCam", v_f)
+            cv2.waitKey(1)
+        else:
+            print("Wait for images")
+
+    def sensor_rgb_callback(self, img, sensor_id):
+        global mutex
+        mutex.acquire()
+        array = np.frombuffer(img.raw_data, dtype=np.dtype("uint8"))
+        array = np.reshape(array, (self.INPUT_WIDTH, self.INPUT_HEIGHT, 4))
+        array = array[:, :, :3]
+        self.car_rgb_cams[sensor_id] = array
+        mutex.release()
 
     def add_actor_pose(self, actor_list_result):
         for actor in actor_list_result:
@@ -269,6 +310,8 @@ class SpecificWorker(GenericWorker):
         self.collisions.append(collision.other_actor)
 
     def destroy_actor(self):
+        for actor in self.world.get_actors():
+            actor.destroy()
         self.carla_actors = []
         
     # =============== Methods for Component Implements ==================
@@ -278,21 +321,15 @@ class SpecificWorker(GenericWorker):
     # IMPLEMENTATION of get_state method from Carla interface
     #
     def Carla_getState(self):
-        if self.Results.valid:
-            ret = self.Results
-        else:
-            ret = None
-        #
-        # write your CODE here
-        #
+        ret = self.results
         return ret
     #
     # IMPLEMENTATION of set_simulation_param method from Carla interface
     #
+
     def Carla_setSimulationParam(self, condini):
-        self.simulation = condini
-        print(self.simulation)
-        pass
+        self.cond_simulation = condini
+        print("New simulations arrive")
 
     # ===================================================================
     # ===================================================================

@@ -64,7 +64,7 @@ console = Console()
 
 import interfaces
 from specificworker import *
-
+import carla
 #SIGNALS handler
 def sigint_handler(*args):
     QtCore.QCoreApplication.quit()
