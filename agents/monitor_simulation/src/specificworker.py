@@ -18,17 +18,17 @@
 #    You should have received a copy of the GNU General Public License
 #    along with RoboComp.  If not, see <http://www.gnu.org/licenses/>.
 #
+import interfaces as ifaces
+import numpy as np
+import time
 
 from PySide2.QtCore import QTimer
 from PySide2.QtWidgets import QApplication
 from rich.console import Console
 from genericworker import *
-
+from pydsr import *
 sys.path.append('/opt/robocomp/lib')
 console = Console(highlight=False)
-
-from pydsr import *
-import interfaces as ifaces
 
 
 # If RoboComp was compiled with Python bindings you can use InnerModel in Python
@@ -47,9 +47,18 @@ class SpecificWorker(GenericWorker):
         self.g = DSRGraph(0, "Monitor_simulation", self.agent_id)
         self.rt_api = rt_api(self.g)
         self.robot = self.g.get_node('robot')
+        self.current_time = 0.0
         self.actor_list = []
+        self.cond_env = None
+        self.result = None
+        self.fullresult = ifaces.Fullposedata()
         self.process = False
-
+        self.init_time = 0.0
+        self.simulation_time = 30.0
+        self.variable_simulation_time = float(np.copy(self.simulation_time))
+        self.revision_time = 5.0
+        self.max_simulation = 5
+        self.n_simulation = np.copy(self.max_simulation)
         # try:
         #     signals.connect(self.g, signals.UPDATE_NODE_ATTR, self.update_node_att)
         #     signals.connect(self.g, signals.UPDATE_NODE, self.update_node)
@@ -83,18 +92,22 @@ class SpecificWorker(GenericWorker):
     def compute(self):
         # print('SpecificWorker.compute...')
         if self.robot:
-            self.actor_list = self.get_actor_from_dsr()
-            # print (self.actor_list)
-            cond_ini = ifaces.RoboCompCarla.Simdata(30.0, self.actor_list)
-            cond_env = ifaces.RoboCompCarla.Simulations(5, cond_ini)
+            self.current_time = time.time() - self.init_time
+            print(self.current_time)
             if not self.process:
-                self.carla_proxy.setSimulationParam(cond_env)
+                if self.result is None:
+                    self.init_time = time.time()
+                    self.i = 1
+                self.load_simulation()
+                self.carla_proxy.setSimulationParam(self.cond_env)
                 self.process = True
             else:
                 print("Processing simulation data")
-            result = self.carla_proxy.getState()
-            if result.valid:
-                self.procesing(result)
+            self.result = self.carla_proxy.getState()
+
+            if self.result.valid and self.current_time >= self.i*self.revision_time:
+                self.procesing()
+                self.i += 1
             else:
                 print("Waiting for results")
 
@@ -117,6 +130,10 @@ class SpecificWorker(GenericWorker):
     def startup_check(self):
         QTimer.singleShot(200, QApplication.instance().quit)
 
+    def load_simulation(self):
+        self.actor_list = self.get_actor_from_dsr()
+        cond_ini = ifaces.RoboCompCarla.Simdata(self.variable_simulation_time, self.actor_list)
+        self.cond_env = ifaces.RoboCompCarla.Simulations(self.n_simulation, cond_ini)
 
     def get_actor_from_dsr(self):
         # Read and store people from dsr
@@ -134,7 +151,7 @@ class SpecificWorker(GenericWorker):
         pose.rz = float(rz)
         fullpose.append(pose)
         actor = ifaces.RoboCompCarla.Actor()
-        actor.id =self.robot.id
+        actor.id = self.robot.id
         actor.carlaid = 0
         actor.pose = fullpose
         actor.rol = "ego_vehicle"
@@ -157,7 +174,6 @@ class SpecificWorker(GenericWorker):
             fullpose.append(pose)
             actor = ifaces.RoboCompCarla.Actor()
             actor.id = int(vehicle_node.id)
-            print(type(int(vehicle_node.id)))
             actor.carlaid = 0
             actor.pose = fullpose
             actor.rol = "vehicle"
@@ -183,9 +199,32 @@ class SpecificWorker(GenericWorker):
             actor_list.append(actor)
         return actor_list
 
-    def procesing(self, results):
-        print(results)
-        pass
+    def procesing(self):
+        print(self.result)
+        fullresult = self.result.fullresult
+        for i in self.fullresult:
+            fullresult.append(i)
+        self.fullresult = ifaces.Fullresults()
+        for result in fullresult:
+            error = 0.0
+            actor_info = result.actorlist
+            for actor in actor_info:
+                pose = actor.pose[0]
+                edge_rt = self.rt_api.get_edge_RT(self.g.get_node("world"), actor.id)
+                x, y, _ = edge_rt.attrs['rt_translation'].value
+                error += np.sqrt(np.power(x/1000-pose.tx, 2)+np.power(y/1000-pose.ty,2))
+                actor.pose.pop(0)
+            print("ERROR:", error)
+            if error <= 25:
+                self.fullresult.append(result)
+            else:
+                print("Simulación erronea")
+            print(len(self.fullresult))
+        # print("Simulaciones válidas: ", len(fullresult))
+        self.n_simulation = self.max_simulation - len(self.fullresult)
+        self.variable_simulation_time = self.simulation_time - self.current_time
+        # print("Time", self.variable_simulation_time)
+        self.process = False
 
     ######################
     # From the Carlasim you can call this methods:

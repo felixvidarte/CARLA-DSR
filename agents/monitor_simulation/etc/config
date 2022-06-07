@@ -1,5 +1,5 @@
 # Proxies for required interfaces
-CarlaProxy = carla:tcp -h localhost -p 10744
+CarlaProxy = carla:tcp -h 192.168.1.12 -p 10744
 
 
 

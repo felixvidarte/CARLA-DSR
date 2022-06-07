@@ -28,15 +28,11 @@ module RoboCompCarla
 		string rol;
 	};
 	sequence <Actor> Actors;
-	struct Simdata
-	{
-		float duration;
-		Actors actorlist;
-	};
 	struct Simulations
 	{
 		int nsimulation;
-		Simdata simulations;
+		float duration;
+		Actors actorlist;
 	};
 	struct Simresult
 	{

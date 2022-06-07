@@ -29,6 +29,7 @@ import random
 import sys
 import copy
 from threading import Lock
+
 mutex = Lock()
 from rich.console import Console
 import interfaces as ifaces
@@ -48,7 +49,7 @@ def carla_fun():
     client.set_timeout(10.0)
     client.load_world("Arriba2")
     world = client.get_world()
-    world.get_spectator().set_transform(carla.Transform(carla.Location(0, 0, 382)))
+    world.get_spectator().set_transform(carla.Transform(carla.Location(0, 0, 0)))
     tm = client.get_trafficmanager(8000)
 
     return [client, world, tm]
@@ -78,7 +79,7 @@ class SpecificWorker(GenericWorker):
         self.INPUT_WIDTH = 424
         self.INPUT_HEIGHT = 240
         self.car_rgb_cams = {}
-        #self.create_client()  # Inicializamos conexión con Carla
+        # self.create_client()  # Inicializamos conexión con Carla
         self.client = param_carla[0]
         # self.world = param_carla[1]
         self.tm = param_carla[2]
@@ -118,7 +119,6 @@ class SpecificWorker(GenericWorker):
         #	print("Error reading config params")
         return True
 
-
     @QtCore.Slot()
     def compute(self):
         # print('SpecificWorker.compute...')
@@ -131,11 +131,13 @@ class SpecificWorker(GenericWorker):
             actor_list_result = copy.copy(sim.actorlist)
             n_simulations = self.cond_simulation.nsimulation
             duration = sim.duration
-            print(duration)
+            resultados = []
             for _ in range(0, n_simulations):
                 # print(n_simulations)
                 self.load_actors(sim.actorlist)
+                result = None
                 result = ifaces.RoboCompCarla.Simresult()
+                print("RESULTADOS ANTES", result)
                 real_time = 0
                 i = 1
                 while real_time < duration:
@@ -143,23 +145,30 @@ class SpecificWorker(GenericWorker):
                     self.world.tick()
                     if self.carla_actors[0].get_control().brake > 0.5:
                         self.is_brake = True
-                    if real_time > i * self.revision_time:
-                        print("Add new actor position in ", i * self.revision_time, " s" )
-                        self.add_actor_pose(actor_list_result)
+                    if real_time >= i * self.revision_time:
+                        print("Add new actor position in ", i * self.revision_time, " s")
+                        actor_list_result = self.add_actor_pose(actor_list_result)
                         i += 1
                     self.mosaic()
                     real_time += self.world.get_settings().fixed_delta_seconds
                 result.colision = self.collision
                 result.isbrake = self.is_brake
                 result.actorlist = actor_list_result
-                self.results.fullresult.append(result)
+                print(result)
+                resultados.append(result)
+                # self.results.fullresult.append(result)
+
+                print("RESULTADO", resultados)
+                # self.results.fullresult.append(result)
+                # print("RESULTADOS DESPUES", self.results.fullresult)
                 self.collision = False
                 self.is_brake = False
-                #self.reload_actor(sim.actorlist)
+                # self.reload_actor(sim.actorlist)
                 self.destroy_actor()
             print("LLEGADO")
             self.cond_simulation = None
-            self.results.time = time.time()-time_ini
+            self.results.time = time.time() - time_ini
+            self.results.nsimulation = n_simulations
             self.results.valid = True
         else:
             print("Wait for simulation")
@@ -189,10 +198,10 @@ class SpecificWorker(GenericWorker):
         for actor in actors:
             print(actor.rol)
             if actor.rol == "ego_vehicle":
-                bp = self._blueprint_library.find('vehicle.tesla.model3') #Nuestro vehiculo
+                bp = self._blueprint_library.find('vehicle.tesla.model3')  # Nuestro vehiculo
                 bp.set_attribute('role_name', 'ego')
             elif actor.rol == "vehicle":
-                bp = random.choice(self.world.get_blueprint_library().filter('walker'))
+                bp = random.choice(self.world.get_blueprint_library().filter('vehicle.*'))
             elif actor.rol == "people":
                 bp = random.choice(self.world.get_blueprint_library().filter('pedestrian.*'))
             else:
@@ -200,8 +209,8 @@ class SpecificWorker(GenericWorker):
             try:
                 self.spawn_point = random.choice(self.spawn_points) if self.spawn_points else carla.Transform()
 
-                #self.spawn_point = carla.Transform(carla.Location(x=actor.pose[0].tx/1000, y=actor.pose[0].ty/1000, z=actor.pose[0].tz/1000 + 365),
-                                              #carla.Rotation(actor.pose[0].ry, actor.pose[0].rz, actor.pose[0].rx))  # Comprobar angulos CARLA-ROBOCOMP
+                # self.spawn_point = carla.Transform(carla.Location(x=actor.pose[0].tx/1000, y=actor.pose[0].ty/1000, z=actor.pose[0].tz/1000 + 365),
+                # carla.Rotation(actor.pose[0].ry, actor.pose[0].rz, actor.pose[0].rx))  # Comprobar angulos CARLA-ROBOCOMP
             except:
                 self.spawn_point = random.choice(self.spawn_points) if self.spawn_points else carla.Transform()
                 # spawn_point = self.world.get_random_location_from_navigation()
@@ -235,42 +244,43 @@ class SpecificWorker(GenericWorker):
                 center_cam_location = carla.Location(dimensiones_car.x + 0.02, 0, dimensiones_car.z + 1)
                 center_cam_rotation = carla.Rotation(0, 0, 0)
                 cam_transform = carla.Transform(center_cam_location, center_cam_rotation)
-                center_cam = self.world.spawn_actor(cam_bp, cam_transform, attach_to=ego_vehicle,
+                self.center_cam = self.world.spawn_actor(cam_bp, cam_transform, attach_to=ego_vehicle,
                                                          attachment_type=carla.AttachmentType.Rigid)
-                center_cam.listen(lambda image: self.sensor_rgb_callback(image, "CenterCam"))
+                self.center_cam.listen(lambda image: self.sensor_rgb_callback(image, "CenterCam"))
             elif i == 1:
                 left_cam_location = carla.Location(dimensiones_car.x, -0.02, dimensiones_car.z + 1)
                 left_cam_rotation = carla.Rotation(0, -60, 0)
                 # left_cam_rotation = carla.Rotation(0, 180+math.degrees(-0.244346), math.degrees(-np.pi/3))
                 left_cam_transform = carla.Transform(left_cam_location, left_cam_rotation)
-                left_cam = self.world.spawn_actor(cam_bp, left_cam_transform, attach_to=ego_vehicle,
+                self.left_cam = self.world.spawn_actor(cam_bp, left_cam_transform, attach_to=ego_vehicle,
                                                        attachment_type=carla.AttachmentType.Rigid)
-                left_cam.listen(lambda image: self.sensor_rgb_callback(image, "LeftCam"))
+                self.left_cam.listen(lambda image: self.sensor_rgb_callback(image, "LeftCam"))
             elif i == 2:
                 right_cam_location = carla.Location(dimensiones_car.x, 0.02, dimensiones_car.z + 1)
                 right_cam_rotation = carla.Rotation(0, 60, 0)
                 # left_cam_rotation = carla.Rotation(0, 180+math.degrees(-0.244346), math.degrees(-np.pi/3))
                 right_cam_transform = carla.Transform(right_cam_location, right_cam_rotation)
 
-                right_cam = self.world.spawn_actor(cam_bp, right_cam_transform, attach_to=ego_vehicle,
+                self.right_cam = self.world.spawn_actor(cam_bp, right_cam_transform, attach_to=ego_vehicle,
                                                         attachment_type=carla.AttachmentType.Rigid)
 
-                right_cam.listen(lambda image: self.sensor_rgb_callback(image, "RightCam"))
+                self.right_cam.listen(lambda image: self.sensor_rgb_callback(image, "RightCam"))
         collision_bp = self._blueprint_library.find('sensor.other.collision')
-        collision_sensor = self.world.spawn_actor(collision_bp, cam_transform, attach_to=ego_vehicle, attachment_type=carla.AttachmentType.Rigid)
+        collision_sensor = self.world.spawn_actor(collision_bp, cam_transform, attach_to=ego_vehicle,
+                                                  attachment_type=carla.AttachmentType.Rigid)
         collision_sensor.listen(lambda collision: self.collision_callback(collision))
 
     def apply_control(self, actor, actor_rol):
-        if actor.rol == "ego_vehicle":
+        if actor_rol == "ego_vehicle":
             actor.set_autopilot(True)
-            self.tm.keep_right_rule_percentaje(actor)
-            self.tm.ignore_walkers_percentage(actor,100)
-            self.ignore_vehicles_porcentage(actor, 100)
-        elif actor.rol == "vehicle":
+            self.tm.keep_right_rule_percentage(actor, 100.0)
+            self.tm.ignore_walkers_percentage(actor, 100.0)
+            self.tm.ignore_vehicles_percentage(actor, 100.0)
+        elif actor_rol == "vehicle":
             actor.set_autopilot(True)
-            self.tm.ignore_signs_percentage(actor, random.random(0,100))
-            self.tm.vehicle_percentage_speed_difference(actor,random.random(0,100))
-            self.ignore_vehicles_porcentage(actor,100)
+            self.tm.ignore_signs_percentage(actor, random.random() * 100)
+            self.tm.vehicle_percentage_speed_difference(actor, random.random() * 100)
+            self.tm.ignore_vehicles_percentage(actor, 100)
         elif actor.rol == "people":
             pass
 
@@ -303,6 +313,7 @@ class SpecificWorker(GenericWorker):
             pose.ry = actor_pose.rotation.pitch
             pose.rz = actor_pose.rotation.yaw
             actor.pose.append(pose)
+        return actor_list_result
 
     def collision_callback(self, collision):
         print("Collision with", collision.other_actor.type_id)
@@ -311,9 +322,10 @@ class SpecificWorker(GenericWorker):
 
     def destroy_actor(self):
         for actor in self.world.get_actors():
-            actor.destroy()
+            actor_destroy = actor.destroy()
+            print(actor_destroy)
         self.carla_actors = []
-        
+
     # =============== Methods for Component Implements ==================
     # ===================================================================
 
@@ -321,15 +333,28 @@ class SpecificWorker(GenericWorker):
     # IMPLEMENTATION of get_state method from Carla interface
     #
     def Carla_getState(self):
-        ret = self.results
+        ret = ifaces.RoboCompCarla.Results()
+        ret.time = time.time() - time_ini
+        ret.nsimulation = n_simulations
+        ret.valid = True
+
+        ret.fullresult = ifaces.Fullresults()
+        for r in self.results:
+            result = ifaces.RoboCompCarla.Simresult()
+            result.colision = r["collision"]
+            result.isbrake = r["isBrake"]
+            result.actorlist = r["actorList"]
+            ret.fullresult.append(result)
+
         return ret
+
     #
     # IMPLEMENTATION of set_simulation_param method from Carla interface
     #
 
     def Carla_setSimulationParam(self, condini):
-        self.cond_simulation = condini
         print("New simulations arrive")
+        self.cond_simulation = condini
 
     # ===================================================================
     # ===================================================================
@@ -338,7 +363,6 @@ class SpecificWorker(GenericWorker):
     # From the RoboCompCarla you can use this types:
     # RoboCompCarla.Posedata
     # RoboCompCarla.Actor
-    # RoboCompCarla.Simdata
     # RoboCompCarla.Simulations
     # RoboCompCarla.Simresult
     # RoboCompCarla.Results
