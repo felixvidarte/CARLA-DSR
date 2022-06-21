@@ -195,14 +195,15 @@ class SpecificWorker(GenericWorker):
             pos = edge_rt.attrs['rt_translation'].value
             rot = edge_rt.attrs['rt_rotation_euler_xyz'].value
             carla_pose = self.world_to_carla(pos[0], pos[1], rot[2])
-            pos = [carla_pose[0], carla_pose[1], pos[2]]
-            rot[2] = carla_pose[2]
-            pose = list(map(float, pos))+list(map(float, rot))
-            fullpose.append(pose)
+            # pos = [carla_pose[0], carla_pose[1], pos[2]]
+            # rot[2] = carla_pose[2]
+            # pose = list(map(float, pos))+list(map(float, rot))
+            fullpose.append(carla_pose)
             actor = {
                 'id': self.robot.id,
                 'carlaID': 0,
-                'fullPose': fullpose,
+                'initPose': fullpose,
+                'fullPose': [],
                 'rol': 'ego_vehicle'
             }
             self.actor_list.append(actor)
@@ -215,14 +216,15 @@ class SpecificWorker(GenericWorker):
                 pos = edge_rt.attrs['rt_translation'].value
                 rot = edge_rt.attrs['rt_rotation_euler_xyz'].value
                 carla_pose = self.world_to_carla(pos[0], pos[1], rot[2])
-                pos = [carla_pose[0], carla_pose[1], pos[2]]
-                rot[2] = carla_pose[2]
-                pose = list(map(float, pos)) + list(map(float, rot))
-                fullpose.append(pose)
+                # pos = [carla_pose[0], carla_pose[1], pos[2]]
+                # rot[2] = carla_pose[2]
+                # pose = list(map(float, pos)) + list(map(float, rot))
+                fullpose.append(carla_pose)
                 actor = {
-                    'id': int(vehicle_node.id),
+                    'id': self.robot.id,
                     'carlaID': 0,
-                    'fullPose': fullpose,
+                    'initPose': fullpose,
+                    'fullPose': [],
                     'rol': 'vehicle'
                 }
                 self.actor_list.append(actor)
@@ -233,14 +235,15 @@ class SpecificWorker(GenericWorker):
                 pos = edge_rt.attrs['rt_translation'].value
                 rot = edge_rt.attrs['rt_rotation_euler_xyz'].value
                 carla_pose = self.world_to_carla(pos[0], pos[1], rot[2])
-                pos = [carla_pose[0], carla_pose[1], pos[2]]
-                rot[2] = carla_pose[2]
-                pose = list(map(float, pos)) + list(map(float, rot))
-                fullpose.append(pose)
+                # pos = [carla_pose[0], carla_pose[1], pos[2]]
+                # rot[2] = carla_pose[2]
+                # pose = list(map(float, pos)) + list(map(float, rot))
+                fullpose.append(carla_pose)
                 actor = {
-                    'id': int(person_node.id),
+                    'id': self.robot.id,
                     'carlaID': 0,
-                    'fullPose': fullpose,
+                    'initPose': fullpose,
+                    'fullPose': [],
                     'rol': 'person'
                 }
                 self.actor_list.append(actor)
@@ -251,10 +254,10 @@ class SpecificWorker(GenericWorker):
             pos = edge_rt.attrs['rt_translation'].value
             rot = edge_rt.attrs['rt_rotation_euler_xyz'].value
             carla_pose = self.world_to_carla(pos[0], pos[1], rot[2])
-            pos = [carla_pose[0], carla_pose[1], pos[2]]
-            rot[2] = carla_pose[2]
-            pose = list(map(float, pos)) + list(map(float, rot))
-            actor['fullPose'].append(pose)
+            # pos = [carla_pose[0], carla_pose[1], pos[2]]
+            # rot[2] = carla_pose[2]
+            # pose = list(map(float, pos)) + list(map(float, rot))
+            actor['initPose'].append(carla_pose)
 
     def processing(self):
         fullresult = self.results['fullResult']
@@ -311,11 +314,12 @@ class SpecificWorker(GenericWorker):
                 act = {
                     'id': actor.id,
                     'carlaID': actor.carlaid,
+                    'initPose': [],
                     'fullPose': [],
                     'rol': actor.rol
                 }
                 for pose in actor.pose:
-                    act['fullPose'].append([pose.tx, pose.ty, pose.tz, pose.rx, pose.ry, pose.rz])
+                    act['fullPose'].append([pose.tx, pose.ty, pose.rz])
                 simresult['actorList'].append(act)
             result.append(simresult)
         data = {
@@ -336,10 +340,11 @@ class SpecificWorker(GenericWorker):
             act.id = actor['id']
             act.carlaid = actor['carlaID']
             act.rol = actor['rol']
+            act.initpose = ifaces.Fullposedata()
             act.pose = ifaces.Fullposedata()
-            for pose in actor['fullPose']:
-                pos = ifaces.RoboCompCarla.Posedata(pose[0], pose[1], pose[2], pose[3], pose[4], pose[5])
-                act.pose.append(pos)
+            for pose in actor['initPose']:
+                pos = ifaces.RoboCompCarla.Posedata(pose[0], pose[1], pose[2])
+                act.initpose.append(pos)
             cond_sim.actorlist.append(act)
         return cond_sim
 

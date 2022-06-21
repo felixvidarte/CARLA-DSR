@@ -30,7 +30,9 @@ mutex = Lock()
 from rich.console import Console
 import interfaces as ifaces
 from genericworker import *
-from sim_manager import *
+# from sim_manager import *
+from sim_manger import *
+
 
 sys.path.append('/opt/robocomp/lib')
 console = Console(highlight=False)
@@ -53,7 +55,7 @@ def carla_fun():
 
 
 class SpecificWorker(GenericWorker):
-    def __init__(self, proxy_map, startup_check=True, param_carla=carla_fun()):
+    def __init__(self, proxy_map, startup_check=True):
         super(SpecificWorker, self).__init__(proxy_map)
         self.Period = 100
         if startup_check:
@@ -65,7 +67,7 @@ class SpecificWorker(GenericWorker):
         self.time_ini = 0.0
         self.n_simulations = 5
 
-        self.cond_simulation = {}
+        self.cond_simulation = None
 
         self.results = {
             'valid': False,
@@ -113,6 +115,7 @@ class SpecificWorker(GenericWorker):
         '''
 
         if self.cond_simulation is not None:
+
             # Creación de las simulaciones nuevas
             self.time_ini = time.time()
             duration = self.cond_simulation["duration"]

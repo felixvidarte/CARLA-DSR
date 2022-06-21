@@ -24,6 +24,7 @@ module RoboCompCarla
 	{
 		int id;
 		int carlaid;
+		Fullposedata initpose;
 		Fullposedata pose;
 		string rol;
 	};
@@ -34,9 +35,15 @@ module RoboCompCarla
 		float duration;
 		Actors actorlist;
 	};
+	struct Collision
+	{
+		bool iscollision;
+		float timecollision;
+		Actor actorcollision;
+	};
 	struct Simresult
 	{
-		bool collision;
+		Collision collision;
 		bool isbreak;
 		Actors actorlist;
 	};
