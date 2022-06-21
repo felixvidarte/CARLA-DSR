@@ -349,18 +349,18 @@ class SpecificWorker(GenericWorker):
         alfa = -np.rad2deg(alfa)-74
         return [-carla_point[0], carla_point[1], alfa]
     ######################
-    # From the Carlasim you can call this methods:
-    # self.carla_proxy.getstate(...)
-    # self.carla_proxy.setsimulationparam(...)
+    # From the RoboCompCarla you can call this methods:
+    # self.carla_proxy.getState(...)
+    # self.carla_proxy.setSimulationParam(...)
 
     ######################
-    # From the Carlasim you can use this types:
-    # Carlasim.Posedata
-    # Carlasim.Actor
-    # Carlasim.Simdata
-    # Carlasim.Simulations
-    # Carlasim.Simresult
-    # Carlasim.Results
+    # From the RoboCompCarla you can use this types:
+    # RoboCompCarla.Posedata
+    # RoboCompCarla.Actor
+    # RoboCompCarla.Simulations
+    # RoboCompCarla.Collision
+    # RoboCompCarla.Simresult
+    # RoboCompCarla.Results
 
 
 
