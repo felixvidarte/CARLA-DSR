@@ -77,7 +77,7 @@ class SpecificWorker(GenericWorker):
         self.init_time = time.time()
         self.simulation_time = 30.0
         self.variable_simulation_time = float(np.copy(self.simulation_time))
-        self.revision_time = 5.0
+        self.revision_time = 3
         self.max_simulation = 5
         self.n_simulation = np.copy(self.max_simulation)
         self.cond_env = {
@@ -122,22 +122,23 @@ class SpecificWorker(GenericWorker):
     def compute(self):
         self.current_time = time.time() - self.init_time
         print(self.current_time)
+        if self.simulation_time - self.current_time < 4:
+            print("Decision Making")
+            self.decision_making()
+            self.i = 1
+            self.init_time = time.time()
+            self.current_time = time.time() - self.init_time
+            self.get_actor_from_dsr()
+            self.results['valid'] = False
+            self.load_simulation()
+            self.carla_proxy.setSimulationParam(self.agent2interface(self.cond_env))
+
         if self.results['valid']:
             if self.current_time >= self.i * self.revision_time:
                 print("Processing data")
                 self.processing()
                 self.add_pose_from_dsr()
                 self.i += 1
-                self.results['valid'] = False
-                self.load_simulation()
-                self.carla_proxy.setSimulationParam(self.agent2interface(self.cond_env))
-            elif self.simulation_time - self.current_time < 6.5:
-                print("Decision Making")
-                self.decision_making()
-                self.i = 1
-                self.init_time = time.time()
-                self.current_time = time.time() - self.init_time
-                self.get_actor_from_dsr()
                 self.results['valid'] = False
                 self.load_simulation()
                 self.carla_proxy.setSimulationParam(self.agent2interface(self.cond_env))
@@ -181,11 +182,13 @@ class SpecificWorker(GenericWorker):
         QTimer.singleShot(200, QApplication.instance().quit)
 
     def load_simulation(self):
+        # print(self.actor_list)
         self.cond_env = {
             'n_simulation': self.n_simulation,
             'duration': self.simulation_time - self.current_time,
             'actorList': self.actor_list
         }
+        print("Send new simulations", self.cond_env)
 
     def get_actor_from_dsr(self):
         # Read and store people from dsr
@@ -221,7 +224,7 @@ class SpecificWorker(GenericWorker):
                 # pose = list(map(float, pos)) + list(map(float, rot))
                 fullpose.append(carla_pose)
                 actor = {
-                    'id': self.robot.id,
+                    'id': vehicle_node.id,
                     'carlaID': 0,
                     'initPose': fullpose,
                     'fullPose': [],
@@ -240,7 +243,7 @@ class SpecificWorker(GenericWorker):
                 # pose = list(map(float, pos)) + list(map(float, rot))
                 fullpose.append(carla_pose)
                 actor = {
-                    'id': self.robot.id,
+                    'id': person_node.id,
                     'carlaID': 0,
                     'initPose': fullpose,
                     'fullPose': [],
@@ -261,43 +264,58 @@ class SpecificWorker(GenericWorker):
 
     def processing(self):
         fullresult = self.results['fullResult']
+        print(fullresult)
         fullresult = fullresult + self.valid_result
         self.valid_result = []
         for result in fullresult:
-            error = 0.0
+            total_error = 0.0
             actor_info = result['actorList']
+            correct = 0
             # for actor in actor_info:
             for i in range(0, len(actor_info)):
                 pose = actor_info[i]['fullPose'][0]
                 edge_rt = self.rt_api.get_edge_RT(self.g.get_node("world"), actor_info[i]['id'])
                 x, y, _ = edge_rt.attrs['rt_translation'].value
                 carla_pose = self.world_to_carla(x, y, 0)
-                x = carla_pose[0]
-                y = carla_pose[1]
-                error += np.sqrt(np.power(x-pose[0], 2)+np.power(y-pose[1], 2))
+                xc = carla_pose[0]
+                yc = carla_pose[1]
+                error = np.sqrt(np.power(xc-pose[0], 2)+np.power(yc-pose[1], 2))
+                print(actor_info[i]['id'], error)
+                total_error += error
+                if actor_info[i]['rol'] == 'person':
+                    if error <= 10:
+                        correct += 1
+                    else:
+                        print("Incorrect person simulation", error)
+                else:
+                    if error <= 200:
+                        correct += 1
+                    else:
+                        print("Incorrect vehicle simulation", error)
                 actor_info[i]['fullPose'].pop(0)
-            print("ERROR:", error)
-            if error <= 10:
+            print("Total ERROR:", total_error)
+            if correct == len(actor_info):
                 self.valid_result.append(result)
             else:
-                print("Simulación erronea")
+                print(i, "Simulación erronea en ", len(actor_info)-correct, "de ", len(actor_info))
         # print("Simulaciones válidas: ", len(fullresult))
-        self.n_simulation = self.max_simulation - len(self.valid_result)
+        self.n_simulation = self.max_simulation
         print('Simulaciones siguientes', self.n_simulation)
 
     def decision_making(self):
-        print('Decision Making')
-        self.n_simulation = self.max_simulation
+        self.n_simulation = 5
         print('RESULTADOS VALIDOS', len(self.valid_result))
+        print(self.valid_result)
         for result in self.valid_result:
             virtual_brake = self.g.get_edge(self.robot.id, self.robot.id, 'virtual_brake')
             if virtual_brake is None and result['isBrake']:
                 print("Insert is_brake virtual edge")
                 brake = Edge(self.robot.id, self.robot.id, 'virtual_brake', self.agent_id)
                 self.g.insert_or_assign_edge(brake)
-            virtual_collision = self.g.get_edge(self.robot.id, self.robot.id, 'virtual_collision')
-            if virtual_collision is None and result['collision']:
-                collision = Edge(self.robot.id, self.robot.id, 'virtual_collision', self.agent_id)
+            # virtual_collision = self.g.get_edge(self.robot.id, self.robot.id, 'virtual_collision')
+            # print(virtual_collision)
+            if result['collision']['iscollision']:
+                collision = Edge(self.robot.id,result['collision']['actorcollision'], 'virtual_collision', self.agent_id)
                 self.g.insert_or_assign_edge(collision)
                 print("Insert collision virtual edge")
         self.valid_result = []
@@ -306,7 +324,11 @@ class SpecificWorker(GenericWorker):
         result = []
         for res in interface_data.fullresult:
             simresult = {
-                'collision': res.collision,
+                'collision': {
+                    'iscollision': res.collision.iscollision,
+                    'timecollision': res.collision.timecollision,
+                    'actorcollision': res.collision.actorcollision
+                },
                 'isBrake': res.isbreak,
                 'actorList': []
             }
@@ -343,7 +365,7 @@ class SpecificWorker(GenericWorker):
             act.initpose = ifaces.Fullposedata()
             act.pose = ifaces.Fullposedata()
             for pose in actor['initPose']:
-                pos = ifaces.RoboCompCarla.Posedata(pose[0], pose[1], pose[2])
+                pos = ifaces.RoboCompCarla.Posedata(pose[0], pose[1], 0, 0, 0, pose[2])
                 act.initpose.append(pos)
             cond_sim.actorlist.append(act)
         return cond_sim

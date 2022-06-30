@@ -39,10 +39,11 @@ module RoboCompCarla
 	{
 		bool iscollision;
 		float timecollision;
-		Actor actorcollision;
+		int actorcollision;
 	};
 	struct Simresult
 	{
+		int indice;
 		Collision collision;
 		bool isbreak;
 		Actors actorlist;
@@ -51,7 +52,6 @@ module RoboCompCarla
 	struct Results
 	{
 		bool valid;
-		int nsimulation;
 		float time;
 		Fullresults fullresult;
 	};
