@@ -30,7 +30,7 @@ mutex = Lock()
 
 
 class SimManager:
-    def __init__(self, actor_list, servers):
+    def __init__(self, cond_ini, servers):
         time1 = time.time()
         self.client = servers['client']
         self.loop = None
@@ -48,20 +48,21 @@ class SimManager:
         self.collision_sensor = None
 
         self.sim_register = {
+            'indice': cond_ini['indice'],
             'brake': False,
             'collision': {
                 'iscollision': False,
                 'timecollision': 0,
                 'actorcollision': 0
             },
-            'actorList': copy.deepcopy(actor_list),
+            'actorList': copy.deepcopy(cond_ini['actor_list']),
         }
 
         # self.tm.set_synchronous_mode(True)
         # self.tm.global_percentage_speed_difference(0)
         self.real_time = 0
         self.max_velocity = 7
-        self.revision_time = 8.5
+        self.revision_time = 3
         # self.destroy_actor()
         self.world.tick()
         self.__load_actors()
@@ -248,6 +249,7 @@ class SimManager:
             for actor in self.sim_register['actorList']:
                 if actor['carlaID'] == collision.other_actor.id:
                     self.sim_register['collision']['actorcollision'] = actor['id']
+    
     #
     # def sensor_rgb_callback(self, img, sensor_id):
     #     print('PASA')

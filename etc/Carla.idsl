@@ -12,7 +12,7 @@ module RoboCompCarla
     sequence<Posedata> Fullposedata;   
     struct Actor
     {
-        int id;
+        long id;
         int carlaid;
         Fullposedata initpose;
         Fullposedata pose;
@@ -21,7 +21,7 @@ module RoboCompCarla
     sequence<Actor> Actors;
     struct Simulations
     {
-    	int nsimulation;
+    	int indice;
     	float duration;
         Actors actorlist;
     };
@@ -34,7 +34,7 @@ module RoboCompCarla
     {
     	int indice;
     	Collision collision;
-    	bool isbreak;
+    	bool isbrake;
     	Actors actorlist;
     };
     sequence<Simresult> Fullresults;    
